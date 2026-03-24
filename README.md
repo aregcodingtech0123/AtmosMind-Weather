@@ -56,12 +56,13 @@ AtmosMind-Weather-main/
 ## Quick Start (Docker)
 
 1. `cd backend && cp .env.example .env` — set `GOOGLE_API_KEY` and `REDIS_PASSWORD`.
-2. From repo root: `docker compose up --build`
-3. Frontend [http://localhost:3000](http://localhost:3000) · Backend [http://localhost:8000](http://localhost:8000)
+2. Optional: in the repo root, set `REACT_APP_API_URL` in a `.env` file used by Compose if the frontend should call a different API than `http://localhost:8000` (default build arg for the static bundle).
+3. From repo root: `docker compose up --build`
+4. Frontend [http://localhost:3000](http://localhost:3000) · Backend [http://localhost:8000](http://localhost:8000)
 
 ## Local Development (Without Docker)
 
-Set `REACT_APP_API_URL=http://localhost:8000` in `frontend/.env` if your API client expects it.
+Create `frontend/.env.local` from `frontend/.env.example` and set `REACT_APP_API_URL` to your API origin (e.g. `http://localhost:8000` for local backend). The app does not use a hardcoded API URL in source code.
 
 ### Backend
 

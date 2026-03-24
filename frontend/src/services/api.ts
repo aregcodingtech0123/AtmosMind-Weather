@@ -1,4 +1,26 @@
-const API_BASE = (process.env.REACT_APP_API_URL ?? '').replace(/\/$/, '');
+/**
+ * Backend origin from `REACT_APP_API_URL` (no trailing slash).
+ * Set in Vercel and locally via `frontend/.env.local` — see `.env.example`.
+ */
+function normalizeApiBase(raw: string | undefined): string {
+  if (raw == null || !String(raw).trim()) return '';
+  return String(raw).trim().replace(/\/+$/, '');
+}
+
+export const API_BASE = normalizeApiBase(process.env.REACT_APP_API_URL);
+
+if (process.env.NODE_ENV === 'production' && !API_BASE) {
+  // eslint-disable-next-line no-console
+  console.error(
+    'AtmosMind: REACT_APP_API_URL is not set. Configure it in your host (e.g. Vercel Environment Variables).'
+  );
+}
+
+/** Absolute or same-origin path for API requests. */
+export function apiUrl(path: string): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return API_BASE ? `${API_BASE}${p}` : p;
+}
 
 type JsonHeaders = Record<string, string>;
 
@@ -57,18 +79,18 @@ export async function reverseGeocode(
 
 export async function autocompleteCities(query: string, language: string) {
   return postJson<{ suggestions: Array<{ name: string; lat: number; lon: number }> }, { query: string; language: string }>(
-    `${API_BASE}/api/autocomplete`,
+    apiUrl('/api/autocomplete'),
     { query, language }
   );
 }
 
 export async function fetchAiWeather(city: string, language: string, unit: 'metric' | 'imperial') {
-  return postJson(`${API_BASE}/api/ai-weather`, { city, language, unit });
+  return postJson(apiUrl('/api/ai-weather'), { city, language, unit });
 }
 
 export async function fetchBatchWeather(cities: string[], language: string) {
   return postJson<{ results?: Array<{ city: string; temperature?: number; condition?: string; weather_code?: number }>; temperatures?: Record<string, number> }, { cities: string[]; language: string }>(
-    `${API_BASE}/api/weather/batch`,
+    apiUrl('/api/weather/batch'),
     { cities, language }
   );
 }
@@ -80,7 +102,7 @@ export async function fetchForecastSummary(
   unit: 'metric' | 'imperial'
 ) {
   return postJson<{ summary: string }, { city: string; weather_summary: string; language: string; unit: 'metric' | 'imperial' }>(
-    `${API_BASE}/api/get-forecast-summary`,
+    apiUrl('/api/get-forecast-summary'),
     { city, weather_summary, language, unit }
   );
 }
@@ -92,7 +114,7 @@ export async function fetchCityAdvice(
   unit: 'metric' | 'imperial'
 ) {
   return postJson<{ advice: string }, { city: string; weather_summary: string; language: string; unit: 'metric' | 'imperial' }>(
-    `${API_BASE}/api/get-city-advice`,
+    apiUrl('/api/get-city-advice'),
     { city, weather_summary, language, unit }
   );
 }

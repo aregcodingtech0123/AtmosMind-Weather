@@ -4,8 +4,7 @@ import { cn } from '../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../context/SettingsContext';
-
-const API_BASE = (process.env.REACT_APP_API_URL ?? '').replace(/\/$/, '');
+import { apiUrl } from '../services/api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -50,7 +49,7 @@ export const FloatingChatbot: React.FC = () => {
         role: m.role,
         content: m.content,
       }));
-      const response = await fetch(`${API_BASE}/api/chat`, {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept-Charset': 'utf-8' },
         body: JSON.stringify({ messages: nextHistory, language: currentLanguage, unit: currentUnit }),
