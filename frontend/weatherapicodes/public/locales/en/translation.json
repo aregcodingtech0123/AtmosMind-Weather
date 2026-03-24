@@ -1,0 +1,128 @@
+{
+  "navbar": {
+    "languageLabel": "Language",
+    "unitLabel": "Unit",
+    "celsius": "Celsius (°C)",
+    "fahrenheit": "Fahrenheit (°F)",
+    "about": "About Us",
+    "privacy": "Privacy",
+    "menu": "Menu",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "tabletMenuHint": "Language and unit are in the bar above."
+  },
+  "search": {
+    "searchCity": "Search city",
+    "placeholder": "Search city…",
+    "searchForCity": "Search for a city",
+    "useMyLocation": "Use my location",
+    "useMyCurrentLocation": "Use my current location",
+    "citySuggestions": "City suggestions"
+  },
+  "home": {
+    "welcome": "Welcome to AtmosMind",
+    "tagline": "Search for a city or use your current location to get started with detailed weather forecasts.",
+    "openWeatherDetails": "Open weather details for {{city}}",
+    "cityLoading": "Loading city..."
+  },
+  "actions": {
+    "weatherForecast": "Weather Forecast",
+    "getAdvice": "Get Advice"
+  },
+  "sections": {
+    "detailedForecastSummary": "Detailed Weather Forecast Summary",
+    "lastUpdated": "Last updated",
+    "poweredByOpenWeather": "Powered by OpenWeather",
+    "generatingForecastSummary": "Generating forecast summary...",
+    "clickWeatherForecastHint": "Click \"Weather Forecast\" above for an AI-generated, narrative summary of the upcoming weather.",
+    "personalizedAdviceFor": "Personalized advice for {{city}}",
+    "gettingAdvice": "Getting advice...",
+    "clickGetAdviceHint": "Click \"Get Advice\" above for clothing and activity tips based on the current forecast."
+  },
+  "weather": {
+    "myLocation": "My Location",
+    "addToFavorites": "Add to favorites",
+    "removeFromFavorites": "Remove from favorites",
+    "feelsLike": "Feels like",
+    "humidity": "Humidity",
+    "wind": "Wind",
+    "kmh": "km/h",
+    "sevenDayForecast": "7-Day Forecast",
+    "today": "Today",
+    "hourlyForecast": "Hourly Forecast",
+    "scrollLeft": "Scroll left",
+    "scrollRight": "Scroll right",
+    "now": "Now",
+    "temperatureTrend": "Temperature Trend"
+  },
+  "chat": {
+    "title": "AtmosMind Assistant",
+    "close": "Close chat",
+    "open": "Open weather assistant",
+    "welcome": "Hello! I am your AtmosMind Assistant. How can I help you today?",
+    "thinking": "Thinking...",
+    "placeholder": "Ask about weather...",
+    "send": "Send",
+    "errorFallback": "Sorry, I could not get a response. Please try again."
+  },
+  "messages": {
+    "failedToLoadAiWeather": "Failed to load AI weather",
+    "failedToGetForecastSummary": "Failed to get forecast summary",
+    "couldNotLoadForecastSummary": "Could not load forecast summary. Please try again.",
+    "failedToGetAdvice": "Failed to get advice",
+    "couldNotLoadAdvice": "Could not load advice. Please try again."
+  },
+  "footer": {
+    "brandTagline": "AI-Powered Weather Platform.",
+    "quickLinks": "Quick Links",
+    "home": "Home",
+    "aboutUs": "About Us",
+    "resources": "Resources",
+    "privacyPolicy": "Privacy Policy",
+    "connect": "Connect",
+    "instagram": "AtmosMind on Instagram",
+    "facebook": "AtmosMind on Facebook",
+    "copyright": "© 2026 AtmosMind. All rights reserved."
+  },
+  "favorites": {
+    "savedCities": "Saved Cities",
+    "noSavedCities": "No saved cities yet.",
+    "clickHeartToSave": "Click the heart icon to save a city.",
+    "removeFromFavorites": "Remove {{city}} from favorites"
+  },
+  "about": {
+    "seoTitle": "About AtmosMind - The Future of AI Weather Intelligence",
+    "seoDescription": "Learn how AtmosMind combines AI and real-time climate data to deliver trusted, practical weather intelligence for daily life and travel planning.",
+    "title": "About Us",
+    "mainParagraph": "At AtmosMind, we're redefining how you perceive and interact with weather. More than just an ordinary weather forecast, AtmosMind is your personal AI-powered climate intelligence assistant. Imagine being able to ask our AI detailed questions about any location on Earth, and receiving personalized, context-aware recommendations based on both current and future weather patterns. Whether you're planning a trip, optimizing your daily commute, or simply curious about the world around you, AtmosMind provides the deep insights you need to make informed decisions.",
+    "qa1Q": "What is AtmosMind?",
+    "qa1A": "AtmosMind is a weather intelligence application that combines real-time forecasts with AI interpretation so users can quickly understand what conditions mean for their daily decisions.",
+    "qa2Q": "How does AI help?",
+    "qa2A": "Instead of presenting only numbers, AtmosMind explains likely weather impacts, suggests what to wear, and recommends weather-appropriate activities based on current and upcoming patterns.",
+    "qa3Q": "Why trust AtmosMind for planning?",
+    "qa3A": "AtmosMind is built for clarity, speed, and practical actionability. It merges verified weather data and AI-guided summaries to support confident travel, commute, and day-to-day planning."
+  },
+  "privacy": {
+    "seoTitle": "Privacy Policy - AtmosMind AI Weather Dashboard",
+    "seoDescription": "Read AtmosMind's privacy practices, including data collection, usage, security standards, and user rights for AI-powered weather services.",
+    "title": "Privacy Policy",
+    "introductionTitle": "Introduction",
+    "introductionBody": "This Privacy Policy explains how AtmosMind collects, uses, and safeguards information when you use our platform. Our goal is to provide transparent practices and maintain trust while delivering intelligent weather insights.",
+    "collectTitle": "Information We Collect",
+    "collectBody": "Depending on how you interact with AtmosMind, we may process the following categories of information:",
+    "collectItem1": "Search inputs and weather-related queries entered in the application.",
+    "collectItem2": "Approximate or explicit location data used to provide weather forecasts.",
+    "collectItem3": "Technical usage data such as device type, browser details, and interaction logs.",
+    "usageTitle": "How We Use Your Information",
+    "usageBody": "We use collected information to operate and improve the platform, including the delivery of relevant forecasts and personalized AI guidance.",
+    "usageItem1": "Provide accurate weather content and location-based recommendations.",
+    "usageItem2": "Enhance response quality for AI-powered suggestions and insights.",
+    "usageItem3": "Monitor performance, prevent misuse, and improve overall user experience.",
+    "securityTitle": "Data Security",
+    "securityBody": "AtmosMind applies standard administrative, technical, and organizational security measures designed to protect data against unauthorized access, alteration, disclosure, or destruction.",
+    "thirdPartyTitle": "Third-Party Services",
+    "thirdPartyBody": "AtmosMind may rely on third-party APIs and infrastructure providers to deliver core functionality, such as weather data and AI services. These providers operate under their own privacy terms and policies.",
+    "rightsTitle": "Your Rights",
+    "rightsBody": "You may have rights regarding access, correction, deletion, or restriction of your personal data depending on your jurisdiction. You can also choose to limit certain data-sharing features by adjusting your usage preferences."
+  }
+}

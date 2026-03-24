@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+
+    <!-- =============================================
+         FAVICON & PWA
+    ============================================== -->
+    <link rel="icon" href="%PUBLIC_URL%/AtmosMindLogo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/AtmosMindLogo.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1B2735" />
+
+    <!-- =============================================
+         PRIMARY SEO — Title & Description
+         Target keywords:
+           AI weather dashboard, real-time weather forecast,
+           Redis-cached weather app, Gemini AI weather assistant
+    ============================================== -->
+    <title>AtmosMind — AI-Powered Weather Dashboard | Real-Time Forecasts & Gemini AI Assistant</title>
+    <meta
+      name="description"
+      content="AtmosMind is an AI-powered weather dashboard built with React, FastAPI, Redis, and Google Gemini. Get real-time forecasts, hourly & 7-day outlooks, and chat with an AI weather assistant that fetches live data via function calling."
+    />
+    <meta
+      name="keywords"
+      content="AI weather dashboard, real-time weather forecast, Gemini AI weather assistant, Redis weather cache, FastAPI weather API, weather app React, open-meteo weather, AI-powered weather app, weather chatbot, Docker weather application"
+    />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="author" content="AtmosMind" />
+
+    <!-- Canonical URL is set per route via react-helmet-async -->
+
+    <!-- =============================================
+         OPEN GRAPH (Facebook, LinkedIn, WhatsApp, Slack)
+    ============================================== -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AtmosMind" />
+    <meta property="og:title" content="AtmosMind — AI-Powered Weather Dashboard | Gemini AI + Redis" />
+    <meta
+      property="og:description"
+      content="Real-time weather forecasts powered by Google Gemini AI, Redis caching, and FastAPI. Search any city, chat with an AI assistant, and view interactive charts — all in a stunning glassmorphism UI."
+    />
+    <meta property="og:url" content="https://atmosmind.app/" />
+    <meta property="og:image" content="https://atmosmind.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AtmosMind weather dashboard showing real-time temperature and AI chatbot" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- =============================================
+         TWITTER CARD (X / Twitter)
+    ============================================== -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@AtmosMind" />
+    <meta name="twitter:creator" content="@AtmosMind" />
+    <meta name="twitter:title" content="AtmosMind — AI Weather Dashboard with Gemini AI" />
+    <meta
+      name="twitter:description"
+      content="Ask the AI chatbot 'What's the weather in Tokyo?' and get live data — powered by Gemini function calling, Redis caching, and Open-Meteo. Built with React + FastAPI."
+    />
+    <meta name="twitter:image" content="https://atmosmind.app/og-image.png" />
+    <meta name="twitter:image:alt" content="AtmosMind AI weather dashboard interface" />
+
+    <!-- =============================================
+         GOOGLE FONTS — loaded with performance best practices
+    ============================================== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- =============================================
+         JSON-LD STRUCTURED DATA
+         Schema.org: SoftwareApplication + WebApplication + WeatherService
+         Helps Google Rich Results, SearchGPT, Perplexity, and Claude
+         understand the app's purpose, tech stack, and features.
+    ============================================== -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://atmosmind.app/#webapp",
+          "name": "AtmosMind",
+          "alternateName": "AtmosMind AI Weather Dashboard",
+          "url": "https://atmosmind.app/",
+          "description": "An AI-powered weather dashboard that provides real-time forecasts, hourly and 7-day outlooks, and an AI chatbot (powered by Google Gemini function calling) that fetches live weather data for any city worldwide.",
+          "applicationCategory": "WeatherApplication",
+          "operatingSystem": "Web Browser",
+          "softwareVersion": "1.0.0",
+          "screenshot": "https://atmosmind.app/og-image.png",
+          "featureList": [
+            "Real-time weather forecasts via Open-Meteo API",
+            "AI weather assistant with Google Gemini function calling",
+            "Redis-cached city search with SQLite fallback",
+            "7-day and hourly forecast with interactive Recharts charts",
+            "Docker-containerized FastAPI backend",
+            "Glassmorphism UI built with React 19 and Tailwind CSS",
+            "Batch weather for 10 popular world cities",
+            "Personalized AI weather advice for any city"
+          ],
+          "author": {
+            "@type": "Person",
+            "name": "AtmosMind Developer"
+          },
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "programmingLanguage": ["TypeScript", "Python"],
+          "softwareRequirements": "Modern web browser with JavaScript enabled",
+          "keywords": "AI weather dashboard, Gemini AI, Redis cache, FastAPI, real-time weather, weather chatbot"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://atmosmind.app/#website",
+          "name": "AtmosMind",
+          "url": "https://atmosmind.app/",
+          "description": "AI-powered real-time weather dashboard with Gemini chatbot, Redis caching, and Docker-containerized backend.",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://atmosmind.app/weather/{city}"
+            },
+            "query-input": "required name=city"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://atmosmind.app/#organization",
+          "name": "AtmosMind",
+          "url": "https://atmosmind.app/",
+          "logo": "https://atmosmind.app/AtmosMindLogo.png",
+          "sameAs": [
+            "https://x.com/AtmosMind",
+            "https://github.com/AtmosMind",
+            "https://www.linkedin.com/company/atmosmind"
+          ]
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body>
+    <noscript>
+      AtmosMind is an AI-powered weather dashboard. You need to enable JavaScript to run this app.
+      It provides real-time weather forecasts, hourly and 7-day outlooks, and an AI chatbot powered by Google Gemini.
+    </noscript>
+    <div id="root"></div>
+  </body>
+</html>

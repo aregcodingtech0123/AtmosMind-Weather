@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/cities.db
+    volumes:
+      - ./backend/data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    env_file:
+      - ./backend/.env
+    command: sh -c 'redis-server --save 60 1 --loglevel warning --requirepass "$$REDIS_PASSWORD"'
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend/weatherapicodes
+    environment:
+      - NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE=0
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  redis_data:

@@ -1,0 +1,22 @@
+/* App-specific styles */
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom selection color */
+::selection {
+  background-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+/* Smooth transitions for dynamic backgrounds */
+.transition-bg {
+  transition: background 0.7s ease-in-out;
+}

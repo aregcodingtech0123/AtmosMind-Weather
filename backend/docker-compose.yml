@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/cities.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    env_file:
+      - .env
+    command: sh -c 'redis-server --save 60 1 --loglevel warning --requirepass "$$REDIS_PASSWORD"'
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

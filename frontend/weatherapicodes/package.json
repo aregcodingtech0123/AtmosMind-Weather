@@ -1,0 +1,65 @@
+{
+  "name": "weatherapicodes",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://localhost:8000",
+  "dependencies": {
+    "@svgr/plugin-svgo": "^8.1.0",
+    "@svgr/webpack": "^8.1.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@types/jest": "^27.5.2",
+    "@types/node": "^16.18.126",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "clsx": "^2.1.1",
+    "css-select": "^6.0.0",
+    "framer-motion": "^12.29.2",
+    "i18next": "^22.5.1",
+    "i18next-http-backend": "^2.7.3",
+    "lucide-react": "^0.563.0",
+    "nth-check": "^2.1.1",
+    "openmeteo": "^1.1.5",
+    "postcss": "^8.5.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-helmet-async": "^3.0.0",
+    "react-i18next": "^12.3.1",
+    "react-router-dom": "^7.13.1",
+    "react-scripts": "5.0.1",
+    "recharts": "^3.7.0",
+    "resolve-url-loader": "^5.0.0",
+    "svgo": "^4.0.0",
+    "tailwind-merge": "^3.4.0",
+    "typescript": "^4.9.5",
+    "web-vitals": "^2.1.4",
+    "webpack-dev-server": "^5.2.3"
+  },
+  "scripts": {
+    "dev": "react-scripts start",
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

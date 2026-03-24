@@ -1,0 +1,65 @@
+# =============================================================
+# AtmosMind — robots.txt
+# Strategy: Welcome all crawlers (traditional + AI)
+#            Block sensitive backend routes only
+# =============================================================
+
+# ── Traditional Search Engines ─────────────────────────────
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+
+User-agent: Slurp
+Allow: /
+Disallow: /api/
+
+# ── AI / LLM Crawlers — explicitly welcomed ─────────────────
+# OpenAI / ChatGPT / SearchGPT
+User-agent: GPTBot
+Allow: /
+
+# OpenAI web search (SearchGPT)
+User-agent: OAI-SearchBot
+Allow: /
+
+# Perplexity AI
+User-agent: PerplexityBot
+Allow: /
+
+# Anthropic Claude
+User-agent: ClaudeBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+
+# Google Gemini / AI Overviews
+User-agent: Google-Extended
+Allow: /
+
+# Meta AI
+User-agent: FacebookBot
+Allow: /
+
+# Common-Crawl (used by many LLM training pipelines)
+User-agent: CCBot
+Allow: /
+
+# Cohere AI
+User-agent: cohere-ai
+Allow: /
+
+# ── Global Fallback ─────────────────────────────────────────
+User-agent: *
+Allow: /
+# Protect FastAPI backend routes (served on port 8000, not this domain)
+Disallow: /api/
+# Protect any future admin or auth routes
+Disallow: /admin/
+Disallow: /auth/
+
+# ── Sitemap ─────────────────────────────────────────────────
+Sitemap: https://atmosmind.app/sitemap.xml

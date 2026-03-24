@@ -1,0 +1,121 @@
+{
+  "design_system": {
+    "name": "Atmospheric Glass",
+    "description": "A visually stunning, glassmorphism-based weather dashboard that adapts its ambient lighting to weather conditions.",
+    "theme_strategy": "Dynamic Adaptive",
+    "typography": {
+      "font_family": {
+        "heading": "Manrope, sans-serif",
+        "body": "Inter, sans-serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "scale": {
+        "hero_temp": "text-8xl md:text-9xl font-bold tracking-tighter",
+        "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+        "h2": "text-2xl md:text-3xl font-semibold tracking-tight",
+        "body": "text-base leading-relaxed",
+        "label": "text-xs font-medium uppercase tracking-widest opacity-70"
+      }
+    },
+    "colors": {
+      "palettes": {
+        "sunny": {
+          "background": "bg-gradient-to-br from-[#4facfe] to-[#00f2fe]",
+          "accent": "#FFD700",
+          "text": "text-white"
+        },
+        "cloudy": {
+          "background": "bg-gradient-to-br from-[#bdc3c7] to-[#2c3e50]",
+          "accent": "#ecf0f1",
+          "text": "text-white"
+        },
+        "rainy": {
+          "background": "bg-gradient-to-br from-[#3a7bd5] to-[#3a6073]",
+          "accent": "#89CFF0",
+          "text": "text-white"
+        },
+        "snowy": {
+          "background": "bg-gradient-to-br from-[#E6DADA] to-[#274046]",
+          "accent": "#FFFFFF",
+          "text": "text-slate-800"
+        },
+        "night": {
+          "background": "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1B2735] via-[#090a0f] to-[#000000]",
+          "accent": "#F0F8FF",
+          "text": "text-white"
+        },
+        "storm": {
+          "background": "bg-gradient-to-br from-[#141E30] to-[#243B55]",
+          "accent": "#9D50BB",
+          "text": "text-white"
+        }
+      },
+      "glass_surfaces": {
+        "panel": "bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]",
+        "panel_hover": "hover:bg-white/20 transition-all duration-300 ease-out hover:scale-[1.02]",
+        "input": "bg-black/20 backdrop-blur-md border border-white/10 text-white placeholder:text-white/50 focus:bg-black/30 focus:border-white/30 transition-all",
+        "tooltip": "bg-black/60 backdrop-blur-md border border-white/10 text-white rounded-lg shadow-xl"
+      }
+    },
+    "layout": {
+      "grid_system": "Bento Grid",
+      "container": "max-w-7xl mx-auto p-4 md:p-8 lg:p-12",
+      "spacing": {
+        "section_gap": "gap-6 md:gap-8",
+        "internal_padding": "p-6 md:p-8"
+      }
+    },
+    "components": {
+      "SearchBar": {
+        "style": "Floating pill shape, centered or top-left, glass effect.",
+        "interaction": "Expand on focus, dropdown with blur."
+      },
+      "CurrentWeather": {
+        "style": "Hero section, large typography, abstract 3D element on right.",
+        "layout": "col-span-full md:col-span-8 lg:col-span-8 row-span-2"
+      },
+      "HourlyForecast": {
+        "style": "Horizontal scroll strip, glass cards.",
+        "layout": "col-span-full md:col-span-12 lg:col-span-12 row-span-1"
+      },
+      "WeatherChart": {
+        "style": "Recharts AreaChart, gradient fill, minimal axes.",
+        "layout": "col-span-full md:col-span-8 lg:col-span-8 row-span-2"
+      },
+      "CityList": {
+        "style": "Vertical list or chips, quick access.",
+        "layout": "col-span-full md:col-span-4 lg:col-span-4 row-span-2"
+      },
+      "DailyForecast": {
+        "style": "Vertical stack or grid of small cards.",
+        "layout": "col-span-full md:col-span-4 lg:col-span-4 row-span-full"
+      }
+    },
+    "assets": {
+      "images": {
+        "sunny_abstract": "https://images.unsplash.com/photo-1624115984858-ae2fb35fc6e1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdsb3dpbmclMjBvcmFuZ2UlMjBvcmIlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3Njk4MDAyMDB8MA&ixlib=rb-4.1.0&q=85",
+        "rainy_abstract": "https://images.unsplash.com/photo-1762151925586-a24ec593a483?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGJsdWUlMjB3YXRlciUyMGRyb3BsZXRzJTIwZ2xhc3MlMjB0ZXh0dXJlfGVufDB8fHx8MTc2OTgwMDIwNXww&ixlib=rb-4.1.0&q=85",
+        "cloudy_abstract": "https://images.unsplash.com/photo-1748723594319-142e211b46a9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwxfHwzZCUyMGZsdWZmeSUyMGNsb3VkJTIwcmFpbiUyMHdlYXRoZXIlMjBpY29uJTIwcmVuZGVyfGVufDB8fHx8MTc2OTgwMDE4NXww&ixlib=rb-4.1.0&q=85"
+      },
+      "icons": "Use lucide-react with stroke-width={1.5} for a thin, elegant look. Increase size (w-8 h-8 or w-12 h-12) for emphasis."
+    },
+    "universal_guidelines": [
+      "Avoid generic 'SaaS Blue' (#3B82F6) as a primary color. Use the dynamic palettes.",
+      "Glass panels MUST have a border (border-white/10 or border-white/20) to define edges.",
+      "Text contrast is critical. If background is dark, text must be white. If background is light (Snowy), text must be dark.",
+      "Use 'Manrope' for all headings to give a modern, friendly feel.",
+      "Animations: Use framer-motion for smooth entrance (opacity: 0 -> 1, y: 20 -> 0).",
+      "Charts: Hide grid lines in Recharts if possible, or make them very subtle (stroke='#ffffff20'). Use 'monotone' curve for lines.",
+      "All interactive elements must have data-testid attributes."
+    ]
+  },
+  "implementation_steps": [
+    "1. Install dependencies: lucide-react, recharts, framer-motion, clsx, tailwind-merge.",
+    "2. Configure Tailwind: Add custom colors and fonts in tailwind.config.js.",
+    "3. Create 'WeatherLayout' component that accepts 'weatherCode' and sets the global background gradient.",
+    "4. Build 'GlassCard' reusable component with the defined glass styles.",
+    "5. Implement 'CurrentWeather' hero using the 'sunny_abstract' or 'rainy_abstract' images as subtle overlays or side visuals.",
+    "6. Build the Dashboard Grid using the Bento layout rules.",
+    "7. Integrate Open-Meteo API and map codes to the palettes."
+  ]
+}
