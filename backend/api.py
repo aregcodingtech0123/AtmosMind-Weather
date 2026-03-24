@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import threading
 import warnings
 import requests
@@ -72,7 +73,6 @@ def _get_redis():
     if _redis_client is not None:
         return _redis_client
     try:
-        import os
         import redis
         url = os.getenv("REDIS_URL", "redis://localhost:6379")
         _redis_client = redis.from_url(url, decode_responses=False)
@@ -153,13 +153,29 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS: cannot use allow_origins=["*"] together with allow_credentials=True (Starlette/FastAPI).
+# For open testing without credentials, set CORS_ALLOW_ALL=1 in the environment.
+_cors_allow_all = os.getenv("CORS_ALLOW_ALL", "").strip() in ("1", "true", "yes")
+if _cors_allow_all:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://atmos-mind-weather-8zpi.vercel.app",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 class WeatherRequest(BaseModel):
