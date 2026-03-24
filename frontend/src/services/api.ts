@@ -1,10 +1,15 @@
 /**
  * Backend origin from `REACT_APP_API_URL` (no trailing slash).
- * Set in Vercel and locally via `frontend/.env.local` — see `.env.example`.
+ * Use the API **host only** (e.g. https://api.example.com), not .../api — paths already include /api/...
+ * If the env value ends with /api, it is stripped so we never double-prefix (/api/api/...).
  */
 function normalizeApiBase(raw: string | undefined): string {
   if (raw == null || !String(raw).trim()) return '';
-  return String(raw).trim().replace(/\/+$/, '');
+  let base = String(raw).trim().replace(/\/+$/, '');
+  if (base.endsWith('/api')) {
+    base = base.slice(0, -4);
+  }
+  return base.replace(/\/+$/, '');
 }
 
 export const API_BASE = normalizeApiBase(process.env.REACT_APP_API_URL);

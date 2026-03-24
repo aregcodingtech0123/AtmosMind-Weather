@@ -153,29 +153,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# CORS: cannot use allow_origins=["*"] together with allow_credentials=True (Starlette/FastAPI).
-# For open testing without credentials, set CORS_ALLOW_ALL=1 in the environment.
-_cors_allow_all = os.getenv("CORS_ALLOW_ALL", "").strip() in ("1", "true", "yes")
-if _cors_allow_all:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://atmos-mind-weather-8zpi.vercel.app",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# CORS: wildcard origin requires allow_credentials=False (browser + Starlette rules).
+# Allows any Vercel preview/production origin without maintaining a static list.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class WeatherRequest(BaseModel):
