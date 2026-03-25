@@ -62,4 +62,4 @@ Disallow: /admin/
 Disallow: /auth/
 
 # ── Sitemap ─────────────────────────────────────────────────
-Sitemap: https://atmosmind.app/sitemap.xml
+Sitemap: https://atmosmindweather.com/sitemap.xml

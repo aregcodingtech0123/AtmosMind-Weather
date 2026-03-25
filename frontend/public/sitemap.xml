@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   AtmosMind Sitemap
-  Replace https://atmosmind.app with your actual deployed domain.
+  Official domain: https://atmosmindweather.com
   Re-generate or update lastmod dates whenever you deploy.
 -->
 <urlset
@@ -10,24 +10,75 @@
 >
   <!-- Home / Dashboard -->
   <url>
-    <loc>https://atmosmind.app/</loc>
+    <loc>https://atmosmindweather.com/</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://atmosmind.app/og-image.png</image:loc>
+      <image:loc>https://atmosmindweather.com/og-image.png</image:loc>
       <image:title>AtmosMind AI Weather Dashboard</image:title>
     </image:image>
   </url>
 
   <url>
-    <loc>https://atmosmind.app/about</loc>
+    <loc>https://atmosmindweather.com/about</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/privacy</loc>
+    <loc>https://atmosmindweather.com/privacy</loc>
+
+  <url>
+    <loc>https://atmosmindweather.com/terms</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/contact</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/cookies</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+  <!-- Weather Guides (static editorial content) -->
+  <url>
+    <loc>https://atmosmindweather.com/guides/humidity</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/guides/wind-chill</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/guides/what-to-wear</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/guides/thunderstorm-safety</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://atmosmindweather.com/guides/uv-index</loc>
+    <lastmod>2026-03-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
@@ -35,61 +86,61 @@
 
   <!-- Popular city pages (static pre-known routes) -->
   <url>
-    <loc>https://atmosmind.app/weather/London</loc>
+    <loc>https://atmosmindweather.com/weather/London</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/New%20York</loc>
+    <loc>https://atmosmindweather.com/weather/New%20York</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Tokyo</loc>
+    <loc>https://atmosmindweather.com/weather/Tokyo</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Istanbul</loc>
+    <loc>https://atmosmindweather.com/weather/Istanbul</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Sydney</loc>
+    <loc>https://atmosmindweather.com/weather/Sydney</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Paris</loc>
+    <loc>https://atmosmindweather.com/weather/Paris</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Dubai</loc>
+    <loc>https://atmosmindweather.com/weather/Dubai</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Bangkok</loc>
+    <loc>https://atmosmindweather.com/weather/Bangkok</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Rome</loc>
+    <loc>https://atmosmindweather.com/weather/Rome</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://atmosmind.app/weather/Berlin</loc>
+    <loc>https://atmosmindweather.com/weather/Berlin</loc>
     <lastmod>2026-03-05</lastmod>
     <changefreq>hourly</changefreq>
     <priority>0.8</priority>

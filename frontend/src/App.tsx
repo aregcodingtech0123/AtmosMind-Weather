@@ -10,6 +10,7 @@ import { FavoriteCities } from './components/FavoriteCities';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorMessage } from './components/ErrorMessage';
 import { FloatingChatbot } from './components/FloatingChatbot';
+import { CookieConsent } from './components/CookieConsent';
 import { useWeather } from './hooks/useWeather';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useFavorites } from './hooks/useFavorites';
@@ -455,6 +456,7 @@ function App() {
         path={currentPath}
         structuredData={breadcrumbSchema}
       />
+      <CookieConsent />
       <div className="w-full px-4 pt-8 sm:px-5 md:px-8 lg:px-12">
         <Navbar
           onSearch={handleSearch}
@@ -482,6 +484,9 @@ function App() {
               <p className="text-white/60 text-center max-w-md">
                 {t('home.tagline')}
               </p>
+
+              {/* Daily Weather Insight (static, visible by default for content richness) */}
+              
               <div className="mt-12 w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {popularCities.map((city) => {
                   const cityLabel = popularCityLabels[city.name] ?? '';
@@ -570,6 +575,39 @@ function App() {
                   </a>
                 );
                 })}
+              </div>
+              <div className="mt-10 w-full max-w-3xl">
+                <div className="rounded-3xl border border-white/10 bg-black/30 backdrop-blur-md p-6">
+                  <h3 className="text-lg md:text-xl font-semibold text-white/90 mb-3">
+                    Daily Weather Insight
+                  </h3>
+                  <p className="text-sm md:text-base text-white/70 leading-7">
+                    Weather planning is most reliable when you combine a few signals instead of focusing on a
+                    single number. Temperature sets the baseline, but comfort and risk often come from wind,
+                    humidity, precipitation timing, and rapid changes through the day.
+                  </p>
+                  <ul className="mt-4 list-disc pl-6 space-y-2 text-sm md:text-base text-white/70 leading-7">
+                    <li>
+                      <span className="text-white/85 font-medium">Wind matters:</span> breezy conditions can
+                      make cool days feel colder and can increase heat loss during commutes.
+                    </li>
+                    <li>
+                      <span className="text-white/85 font-medium">Humidity changes comfort:</span> muggy air
+                      reduces sweat evaporation, so warm days feel heavier and requires more hydration.
+                    </li>
+                    <li>
+                      <span className="text-white/85 font-medium">Rain timing beats totals:</span> even a
+                      short shower at the wrong time can disrupt plans—check the hour-by-hour view.
+                    </li>
+                    <li>
+                      <span className="text-white/85 font-medium">Dress in layers:</span> a light base layer
+                      plus a wind/rain shell adapts better than a single heavy piece.
+                    </li>
+                  </ul>
+                  <p className="mt-4 text-xs text-white/50 leading-6">
+                    Tip: Visit the Weather Guides for deeper explanations (humidity, wind chill, UV, and storm safety).
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
@@ -708,6 +746,9 @@ function App() {
                   <p className="text-xs text-white/55 mb-3">
                     {t('sections.lastUpdated')}: {lastUpdatedLabel}
                   </p>
+                  <p className="text-xs text-white/55 mb-3">
+                    {String(t('disclaimer.aiGenerated', { defaultValue: 'AI-generated content. May be inaccurate—verify for critical decisions.' }))}
+                  </p>
                   {adviceLoading && (
                     <p className="text-sm text-white/70">{t('sections.gettingAdvice')}</p>
                   )}
@@ -747,38 +788,22 @@ function App() {
             'bg-black/35 backdrop-blur-md border border-white/10'
           )}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 px-6 py-8 md:px-8 md:py-10">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <img
-                  src="/AtmosMindLogo.png"
-                  alt="AtmosMind"
-                  className="h-8 w-auto object-contain"
-                />
-                <h3 className="text-lg font-semibold text-white">AtmosMind</h3>
+          <div className="px-6 py-8 md:px-8 md:py-10">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <img
+                    src="/AtmosMindLogo.png"
+                    alt="AtmosMind"
+                    className="h-8 w-auto object-contain"
+                  />
+                  <h3 className="text-lg font-semibold text-white">AtmosMind</h3>
+                </div>
+                <p className="text-sm leading-relaxed text-white/65">
+                  {t('footer.brandTagline')}
+                </p>
               </div>
-              <p className="text-sm leading-relaxed text-white/65">
-                {t('footer.brandTagline')}
-              </p>
-            </div>
 
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">{t('footer.quickLinks')}</h4>
-              <div className="flex flex-col gap-2 text-sm">
-                <Link to="/" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">{t('footer.home')}</Link>
-                <Link to="/about" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">{t('footer.aboutUs')}</Link>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">{t('footer.resources')}</h4>
-              <div className="flex flex-col gap-2 text-sm">
-                <Link to="/privacy" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">{t('footer.privacyPolicy')}</Link>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">{t('footer.connect')}</h4>
               <div className="flex items-center gap-3">
                 <a
                   href="https://instagram.com"
@@ -807,7 +832,92 @@ function App() {
                   <Facebook className="h-4 w-4" />
                 </a>
               </div>
-              
+            </div>
+
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {/* Column 1: Legal */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
+                  Legal
+                </h4>
+                <div className="flex flex-col gap-2 text-sm">
+                  <Link to="/privacy" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    {t('footer.privacyPolicy')}
+                  </Link>
+                  <Link to="/terms" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    {String(t('footer.terms', { defaultValue: 'Terms of Service' }))}
+                  </Link>
+                  <Link to="/cookies" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    {String(t('footer.cookiePolicy', { defaultValue: 'Cookie Policy' }))}
+                  </Link>
+                </div>
+              </div>
+
+              {/* Column 2: Weather Guides */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
+                  Weather Guides
+                </h4>
+                <div className="flex flex-col gap-2 text-sm">
+                  <Link to="/guides/humidity" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    Humidity Guide
+                  </Link>
+                  <Link to="/guides/wind-chill" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    Wind Chill Guide
+                  </Link>
+                  <Link to="/guides/what-to-wear" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    What to Wear
+                  </Link>
+                  <Link to="/guides/thunderstorm-safety" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    Thunderstorm Safety
+                  </Link>
+                  <Link to="/guides/uv-index" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    UV Index Guide
+                  </Link>
+                </div>
+              </div>
+
+              {/* Column 3: Support */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
+                  Support
+                </h4>
+                <div className="flex flex-col gap-2 text-sm">
+                  <Link to="/about" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    {t('footer.aboutUs')}
+                  </Link>
+                  <Link to="/contact" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
+                    {String(t('footer.contact', { defaultValue: 'Contact Us' }))}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-white/10 px-6 py-6 md:px-8">
+            <div className="max-w-6xl mx-auto">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80 mb-3">
+                Popular Cities
+              </h4>
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                {[
+                  { label: 'Istanbul', href: '/weather/Istanbul' },
+                  { label: 'London', href: '/weather/London' },
+                  { label: 'New York', href: '/weather/New%20York' },
+                  { label: 'Tokyo', href: '/weather/Tokyo' },
+                  { label: 'Paris', href: '/weather/Paris' },
+                  { label: 'Dubai', href: '/weather/Dubai' },
+                  { label: 'Berlin', href: '/weather/Berlin' },
+                ].map((c) => (
+                  <Link
+                    key={c.href}
+                    to={c.href}
+                    className="text-white/65 hover:text-cyan-300 transition-colors duration-200"
+                  >
+                    {c.label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
 

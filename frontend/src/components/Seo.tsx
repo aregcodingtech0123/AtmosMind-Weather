@@ -12,11 +12,36 @@ interface SeoProps {
 
 export const Seo: React.FC<SeoProps> = ({ title, description, path, structuredData }) => {
   const canonicalUrl = `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  const graph = Array.isArray(structuredData)
+  const pageGraph = Array.isArray(structuredData)
     ? structuredData
     : structuredData
       ? [structuredData]
       : [];
+
+  const baseGraph: Array<Record<string, unknown>> = [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}#organization`,
+      name: 'AtmosMind',
+      url: SITE_URL,
+      logo: `${SITE_URL}/AtmosMindLogo.png`,
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}#website`,
+      url: SITE_URL,
+      name: 'AtmosMind',
+      description,
+      publisher: { '@id': `${SITE_URL}#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${SITE_URL}/weather/{search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
+    },
+  ];
+
+  const graph = [...baseGraph, ...pageGraph];
 
   return (
     <Helmet prioritizeSeoTags>
