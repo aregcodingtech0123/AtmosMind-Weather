@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -64,6 +64,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { currentLanguage } = useSettings();
+  const searchId = useId();
+  const listboxId = `${searchId}-suggestions`;
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [rawSuggestions, setRawSuggestions] = useState<Suggestion[]>([]);
@@ -215,9 +217,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             aria-label={String(t('search.searchCity'))}
           >
             {isSearching ? (
-              <Loader2 className="w-5 h-5 text-white/60 animate-spin" strokeWidth={1.5} />
+              <Loader2 className="w-5 h-5 text-white/60 animate-spin" strokeWidth={1.5} aria-hidden />
             ) : (
-              <Search className="w-5 h-5 text-white/60" strokeWidth={1.5} />
+              <Search className="w-5 h-5 text-white/60" strokeWidth={1.5} aria-hidden />
             )}
           </button>
 
@@ -230,8 +232,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             placeholder={String(t('search.placeholder'))}
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
             aria-label={String(t('search.searchForCity'))}
             aria-autocomplete="list"
+            aria-controls={showDropdown ? listboxId : undefined}
             aria-expanded={showDropdown}
             className="flex-1 bg-transparent text-white placeholder:text-white/50 outline-none text-base"
             data-testid="search-input"
@@ -252,9 +256,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             data-testid="location-button"
           >
             {locationLoading ? (
-              <Loader2 className="w-5 h-5 text-white/80 animate-spin" strokeWidth={1.5} />
+              <Loader2 className="w-5 h-5 text-white/80 animate-spin" strokeWidth={1.5} aria-hidden />
             ) : (
-              <MapPin className="w-5 h-5 text-white/80" strokeWidth={1.5} />
+              <MapPin className="w-5 h-5 text-white/80" strokeWidth={1.5} aria-hidden />
             )}
           </button>
         </div>
@@ -274,6 +278,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               'bg-black/60 backdrop-blur-xl border border-white/10',
               'rounded-2xl overflow-hidden shadow-xl'
             )}
+            id={listboxId}
             role="listbox"
             aria-label={String(t('search.citySuggestions'))}
             data-testid="search-suggestions"
@@ -292,7 +297,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 data-testid={`suggestion-${city.name.toLocaleLowerCase(currentLanguage).replace(/\s/g, '-')}`}
               >
                 <div className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4 text-white/50 flex-shrink-0" strokeWidth={1.5} />
+                  <MapPin className="w-4 h-4 text-white/50 flex-shrink-0" strokeWidth={1.5} aria-hidden />
                   <span>{city.name}</span>
                 </div>
               </button>

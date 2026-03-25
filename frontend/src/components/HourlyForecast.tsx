@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { HourlyData } from '../types/weather';
 import { formatTemperature, formatHourlyTime, isNightTime } from '../utils/weatherUtils';
 import { cn } from '../utils/cn';
-import { motion } from 'framer-motion';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from 'react-i18next';
 
@@ -36,13 +35,22 @@ export const HourlyForecast: React.FC<HourlyForecastProps> = ({ data, limit = 24
   }));
 
   return (
-    <GlassCard className="p-6 col-span-full" testId="hourly-forecast">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-white tracking-tight font-heading">
+    <GlassCard
+      animate={false}
+      className={cn(
+        'p-6 col-span-full min-w-0 w-full',
+        /* backdrop-filter + horizontal scroll = texture corruption on many mobile GPUs — use solid surface */
+        'max-md:!backdrop-blur-none max-md:bg-white/[0.14] max-md:shadow-[0_4px_24px_rgba(0,0,0,0.2)]'
+      )}
+      testId="hourly-forecast"
+    >
+      <div className="flex items-center justify-between mb-4 gap-3 min-w-0">
+        <h3 className="text-lg font-semibold text-white tracking-tight font-heading truncate">
           {t('weather.hourlyForecast')}
         </h3>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
+            type="button"
             onClick={() => scroll('left')}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             data-testid="hourly-scroll-left"
@@ -51,6 +59,7 @@ export const HourlyForecast: React.FC<HourlyForecastProps> = ({ data, limit = 24
             <ChevronLeft className="w-4 h-4 text-white" strokeWidth={1.5} />
           </button>
           <button
+            type="button"
             onClick={() => scroll('right')}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             data-testid="hourly-scroll-right"
@@ -61,45 +70,52 @@ export const HourlyForecast: React.FC<HourlyForecastProps> = ({ data, limit = 24
         </div>
       </div>
 
-      <div 
+      <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto scrollbar-hide pb-2"
+        className={cn(
+          'hourly-scroll scrollbar-hide flex gap-3 pb-2',
+          'snap-x snap-mandatory',
+          '[scrollbar-width:none]'
+        )}
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        role="list"
+        aria-label={String(t('weather.hourlyForecast'))}
       >
         {hourlyItems.map((item, index) => {
           const isNight = isNightTime(item.time);
           const isNow = index === 0;
-          
+
           return (
-            <motion.div
+            <div
               key={item.time.toISOString()}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: index * 0.03 }}
+              role="listitem"
               className={cn(
-                'flex-shrink-0 flex flex-col items-center gap-2 p-4 rounded-xl',
-                'bg-white/5 border border-white/10',
-                'min-w-[80px] transition-all duration-200',
-                'hover:bg-white/10',
-                isNow && 'bg-white/15 border-white/30'
+                'flex shrink-0 snap-start flex-col items-center gap-2 rounded-xl border p-4',
+                /* Opaque-enough fills avoid alpha stacking artifacts next to scroll/compositor edges */
+                'min-w-[5.5rem] basis-[5.5rem] max-w-[6rem]',
+                'bg-black/25 border-white/15',
+                'md:bg-white/5 md:border-white/10',
+                'transition-colors duration-200',
+                'hover:bg-white/10 md:hover:bg-white/10',
+                isNow && 'border-white/35 bg-white/15 md:bg-white/15 md:border-white/30'
               )}
               data-testid={`hourly-item-${index}`}
             >
-              <span className={cn(
-                'text-xs font-medium',
-                isNow ? 'text-white' : 'text-white/60'
-              )}>
+              <span
+                className={cn(
+                  'text-xs font-medium',
+                  isNow ? 'text-white' : 'text-white/60'
+                )}
+              >
                 {isNow ? t('weather.now') : formatHourlyTime(item.time)}
               </span>
-              <WeatherIcon 
-                code={Number(item.weatherCode)} 
-                isNight={isNight} 
-                size="md" 
-              />
-              <span className="text-lg font-semibold text-white">
+              <span className="flex shrink-0 [&_svg]:block">
+                <WeatherIcon code={Number(item.weatherCode)} isNight={isNight} size="md" />
+              </span>
+              <span className="text-lg font-semibold text-white tabular-nums">
                 {formatTemperature(Number(item.temperature), currentUnit)}
               </span>
-            </motion.div>
+            </div>
           );
         })}
       </div>

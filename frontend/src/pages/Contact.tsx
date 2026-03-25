@@ -1,11 +1,20 @@
-import React, { useMemo, useState } from 'react';
-import { useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import emailjs from '@emailjs/browser';
 import { cn } from '../utils/cn';
 import { Navbar } from '../components/Navbar';
 import { Seo } from '../components/Seo';
 import { useTranslation } from 'react-i18next';
+import {
+  ADMIN_CONTACT_MAIL,
+  EMAILJS_PUBLIC_KEY,
+  EMAILJS_SERVICE_ID,
+  EMAILJS_TEMPLATE_ID,
+  isEmailJsConfigured,
+} from '../config/emailjs';
+
+const SITE_URL = process.env.REACT_APP_SITE_URL ?? 'https://atmosmindweather.com';
 
 export default function Contact() {
   const { t } = useTranslation();
@@ -13,33 +22,79 @@ export default function Contact() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [formStatus, setFormStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const contactEmail = useMemo(() => 'support@atmosmind.app', []);
+  const contactEmail = useMemo(
+    () => ADMIN_CONTACT_MAIL || 'support@atmosmindweather.com',
+    []
+  );
 
   const breadcrumbSchema = {
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://atmosmind.app/' },
-      { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://atmosmind.app/contact' },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+      { '@type': 'ListItem', position: 2, name: 'Contact', item: `${SITE_URL}/contact` },
     ],
   };
 
-  const handleSearch = useCallback((cityName: string, lat: number, lng: number) => {
-    const encoded = encodeURIComponent(cityName);
-    navigate(`/weather/${encoded}`, { state: { cityName, latitude: lat, longitude: lng } });
-  }, [navigate]);
+  const handleSearch = useCallback(
+    (cityName: string, lat: number, lng: number) => {
+      const encoded = encodeURIComponent(cityName);
+      navigate(`/weather/${encoded}`, { state: { cityName, latitude: lat, longitude: lng } });
+    },
+    [navigate]
+  );
 
   const handleLocationRequest = useCallback(() => {
     navigate('/');
   }, [navigate]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const resetStatusOnChange = useCallback(() => {
+    setFormStatus((s) => (s === 'idle' ? s : 'idle'));
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent('AtmosMind Contact');
-    const body = encodeURIComponent(
-      `Name: ${name}\nEmail: ${email}\n\n${message}`.trim()
-    );
-    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
+    setFormStatus('idle');
+
+    if (!isEmailJsConfigured()) {
+      setFormStatus('error');
+      return;
+    }
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const trimmedMessage = message.trim();
+    if (!trimmedName || !trimmedEmail || !trimmedMessage) {
+      setFormStatus('error');
+      return;
+    }
+
+    setSending(true);
+    try {
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          from_name: trimmedName,
+          from_email: trimmedEmail,
+          message: trimmedMessage,
+          to_email: ADMIN_CONTACT_MAIL,
+          reply_to: trimmedEmail,
+        },
+        { publicKey: EMAILJS_PUBLIC_KEY }
+      );
+      setFormStatus('success');
+      setName('');
+      setEmail('');
+      setMessage('');
+    } catch (err) {
+      console.error(err);
+      setFormStatus('error');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -118,8 +173,13 @@ export default function Contact() {
                     </span>
                     <input
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50"
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        resetStatusOnChange();
+                      }}
+                      required
+                      disabled={sending}
+                      className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-60"
                       placeholder={String(t('contact.namePlaceholder', { defaultValue: 'Your name' }))}
                     />
                   </label>
@@ -130,9 +190,14 @@ export default function Contact() {
                     </span>
                     <input
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        resetStatusOnChange();
+                      }}
+                      required
+                      disabled={sending}
                       type="email"
-                      className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50"
+                      className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-60"
                       placeholder={String(t('contact.emailPlaceholder', { defaultValue: 'you@example.com' }))}
                     />
                   </label>
@@ -144,24 +209,59 @@ export default function Contact() {
                   </span>
                   <textarea
                     value={message}
-                    onChange={(e) => setMessage(e.target.value)}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      resetStatusOnChange();
+                    }}
+                    required
+                    disabled={sending}
                     rows={6}
-                    className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 resize-y"
+                    className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 resize-y disabled:opacity-60"
                     placeholder={String(
                       t('contact.messagePlaceholder', { defaultValue: 'Tell us how we can help…' })
                     )}
                   />
                 </label>
 
+                {formStatus === 'success' && (
+                  <p
+                    className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
+                    role="status"
+                  >
+                    {String(t('contact.success', { defaultValue: 'Message sent successfully.' }))}
+                  </p>
+                )}
+                {formStatus === 'error' && (
+                  <p
+                    className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+                    role="alert"
+                  >
+                    {String(
+                      isEmailJsConfigured()
+                        ? t('contact.error', {
+                            defaultValue: "We couldn't send your message. Please try again later.",
+                          })
+                        : t('contact.configError', {
+                            defaultValue:
+                              'Contact form is not configured. Set REACT_APP_EMAILJS_* and REACT_APP_ADMIN_CONTACT_MAIL.',
+                          })
+                    )}
+                  </p>
+                )}
+
                 <button
                   type="submit"
+                  disabled={sending}
                   className={cn(
-                    'inline-flex items-center justify-center rounded-xl px-5 py-3',
+                    'inline-flex items-center justify-center rounded-xl px-5 py-3 min-w-[140px]',
                     'bg-white/15 hover:bg-white/25 text-white font-medium',
-                    'transition-colors focus:outline-none focus:ring-2 focus:ring-white/60'
+                    'transition-colors focus:outline-none focus:ring-2 focus:ring-white/60',
+                    'disabled:opacity-60 disabled:cursor-not-allowed'
                   )}
                 >
-                  {String(t('contact.send', { defaultValue: 'Open email client' }))}
+                  {sending
+                    ? String(t('contact.sending', { defaultValue: 'Sending...' }))
+                    : String(t('contact.send', { defaultValue: 'Send' }))}
                 </button>
               </form>
 
@@ -169,7 +269,7 @@ export default function Contact() {
                 {String(
                   t('contact.note', {
                     defaultValue:
-                      'This form opens your email app using a mailto link. Replace the address above with your real support email before publishing.',
+                      'Messages are delivered securely via EmailJS. We use your email only to respond to this inquiry.',
                   })
                 )}
               </p>

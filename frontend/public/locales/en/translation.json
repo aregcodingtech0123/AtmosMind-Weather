@@ -124,5 +124,26 @@
     "thirdPartyBody": "AtmosMind may rely on third-party APIs and infrastructure providers to deliver core functionality, such as weather data and AI services. These providers operate under their own privacy terms and policies.",
     "rightsTitle": "Your Rights",
     "rightsBody": "You may have rights regarding access, correction, deletion, or restriction of your personal data depending on your jurisdiction. You can also choose to limit certain data-sharing features by adjusting your usage preferences."
+  },
+  "contact": {
+    "seoTitle": "Contact - AtmosMind",
+    "seoDescription": "Get in touch with the AtmosMind team.",
+    "title": "Contact",
+    "subtitle": "Have a question, feedback, or a support request? Send us a message and we'll get back to you.",
+    "emailTitle": "Email",
+    "emailBody": "For privacy requests, AdSense policy questions, or general support, email us at:",
+    "formTitle": "Send a message",
+    "nameLabel": "Name",
+    "namePlaceholder": "Your name",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Tell us how we can help…",
+    "send": "Send",
+    "sending": "Sending...",
+    "success": "Message sent successfully.",
+    "error": "We couldn't send your message. Please try again later.",
+    "configError": "Contact form is not configured. Set REACT_APP_EMAILJS_* and REACT_APP_ADMIN_CONTACT_MAIL on the server.",
+    "note": "Messages are delivered securely via EmailJS. We use your email only to respond to this inquiry."
   }
 }

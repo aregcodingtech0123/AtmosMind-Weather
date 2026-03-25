@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Seo } from './components/Seo';
@@ -9,7 +9,6 @@ import { WeatherChart } from './components/WeatherChart';
 import { FavoriteCities } from './components/FavoriteCities';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorMessage } from './components/ErrorMessage';
-import { FloatingChatbot } from './components/FloatingChatbot';
 import { CookieConsent } from './components/CookieConsent';
 import { useWeather } from './hooks/useWeather';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -34,16 +33,16 @@ import './App.css';
 
 /** Single source of truth for popular city names and images; used for batch request and cards. */
 const POPULAR_CITIES = [
-  { name: 'London, United Kingdom', image: '/cities/london.jpg' },
-  { name: 'New York, United States', image: '/cities/new-york-city.jpg' },
-  { name: 'Tokyo, Japan', image: '/cities/tokyo.jpg' },
-  { name: 'Istanbul, Turkiye', image: '/cities/istanbul.jpg' },
-  { name: 'Sydney, Australia', image: '/cities/sydney.jpg' },
-  { name: 'Paris, France', image: '/cities/paris.jpg' },
-  { name: 'Dubai, United Arab Emirates', image: '/cities/dubai.jpg' },
-  { name: 'Bangkok, Thailand', image: '/cities/bangkok.jpg' },
-  { name: 'Rome, Italy', image: '/cities/rome.jpg' },
-  { name: 'Berlin, Germany', image: '/cities/berlin.jpg' },
+  { name: 'London, United Kingdom', image: '/cities/london.webp' },
+  { name: 'New York, United States', image: '/cities/new-york-city.webp' },
+  { name: 'Tokyo, Japan', image: '/cities/tokyo.webp' },
+  { name: 'Istanbul, Turkiye', image: '/cities/istanbul.webp' },
+  { name: 'Sydney, Australia', image: '/cities/sydney.webp' },
+  { name: 'Paris, France', image: '/cities/paris.webp' },
+  { name: 'Dubai, United Arab Emirates', image: '/cities/dubai.webp' },
+  { name: 'Bangkok, Thailand', image: '/cities/bangkok.webp' },
+  { name: 'Rome, Italy', image: '/cities/rome.webp' },
+  { name: 'Berlin, Germany', image: '/cities/berlin.webp' },
 ];
 
 export interface PopularCityWeather {
@@ -68,6 +67,10 @@ function weatherCodeToIcon(code: number) {
       return Sun;
   }
 }
+
+const FloatingChatbot = lazy(() =>
+  import('./components/FloatingChatbot').then((m) => ({ default: m.FloatingChatbot }))
+);
 
 function App() {
   const { t } = useTranslation();
@@ -242,7 +245,21 @@ function App() {
       );
       if (!disposed) setPopularCityLabels(Object.fromEntries(entries));
     };
-    localizePopularCities();
+
+    // Defer work to idle time so initial render stays snappy (TBT improvement).
+    const schedule = () => {
+      if (typeof (window as any).requestIdleCallback === 'function') {
+        (window as any).requestIdleCallback(() => {
+          if (!disposed) localizePopularCities();
+        });
+      } else {
+        setTimeout(() => {
+          if (!disposed) localizePopularCities();
+        }, 0);
+      }
+    };
+
+    schedule();
     return () => {
       disposed = true;
     };
@@ -406,7 +423,7 @@ function App() {
   const cityForTitle = (selectedCity || decodedCityFromPath || '').trim();
   const seoTitle = cityForTitle
     ? `${cityForTitle} Weather Forecast & AI Advice - AtmosMind`
-    : 'AtmosMind — AI-Powered Weather Dashboard | Real-Time Forecasts & Gemini AI Assistant';
+    : 'AtmosMind';
   const seoDescription = cityForTitle
     ? `Get real-time weather forecast and AI-generated advice for ${cityForTitle}. Explore temperature, wind, humidity, and practical planning insights with AtmosMind.`
     : 'AtmosMind is an AI-powered weather dashboard with real-time forecasts, city insights, and an intelligent weather assistant for smarter daily and travel planning.';
@@ -488,7 +505,7 @@ function App() {
               {/* Daily Weather Insight (static, visible by default for content richness) */}
               
               <div className="mt-12 w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {popularCities.map((city) => {
+                {popularCities.map((city, index) => {
                   const cityLabel = popularCityLabels[city.name] ?? '';
                   return (
                   <a
@@ -525,8 +542,11 @@ function App() {
                       <img
                         src={city.image}
                         alt={cityLabel || city.name}
+                        width={390}
+                        height={260}
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                        loading="lazy"
+                        loading={index === 0 ? 'eager' : 'lazy'}
+                        fetchPriority={index === 0 ? 'high' : 'low'}
                       />
                       {/* Dark gradient overlay for text readability */}
                       <div
@@ -674,8 +694,8 @@ function App() {
                     'transition-colors focus:outline-none focus:ring-2 focus:ring-white/60'
                   )}
                 >
-                  <Sun className="w-5 h-5" strokeWidth={1.5} />
-                  {t('actions.weatherForecast')}
+                  <Sun className="w-5 h-5 shrink-0" strokeWidth={1.5} aria-hidden />
+                  <span>{t('actions.weatherForecast')}</span>
                 </button>
                 <button
                   type="button"
@@ -686,8 +706,8 @@ function App() {
                     'transition-colors focus:outline-none focus:ring-2 focus:ring-white/60'
                   )}
                 >
-                  <Lightbulb className="w-5 h-5" strokeWidth={1.5} />
-                  {t('actions.getAdvice')}
+                  <Lightbulb className="w-5 h-5 shrink-0" strokeWidth={1.5} aria-hidden />
+                  <span>{t('actions.getAdvice')}</span>
                 </button>
               </div>
 
@@ -793,7 +813,7 @@ function App() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <img
-                    src="/AtmosMindLogo.png"
+                    src="/AtmosMindLogo.webp"
                     alt="AtmosMind"
                     className="h-8 w-auto object-contain"
                   />
@@ -816,7 +836,7 @@ function App() {
                   )}
                   aria-label={String(t('footer.instagram'))}
                 >
-                  <Instagram className="h-4 w-4" />
+                  <Instagram className="h-4 w-4" aria-hidden />
                 </a>
                 <a
                   href="https://facebook.com"
@@ -829,7 +849,7 @@ function App() {
                   )}
                   aria-label={String(t('footer.facebook'))}
                 >
-                  <Facebook className="h-4 w-4" />
+                  <Facebook className="h-4 w-4" aria-hidden />
                 </a>
               </div>
             </div>
@@ -927,7 +947,9 @@ function App() {
         </motion.footer>
       </div>
 
-      <FloatingChatbot />
+      <Suspense fallback={null}>
+        <FloatingChatbot />
+      </Suspense>
     </div>
   );
 }

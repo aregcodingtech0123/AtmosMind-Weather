@@ -24,7 +24,7 @@ export const Seo: React.FC<SeoProps> = ({ title, description, path, structuredDa
       '@id': `${SITE_URL}#organization`,
       name: 'AtmosMind',
       url: SITE_URL,
-      logo: `${SITE_URL}/AtmosMindLogo.png`,
+      logo: `${SITE_URL}/AtmosMindLogo.webp`,
     },
     {
       '@type': 'WebSite',

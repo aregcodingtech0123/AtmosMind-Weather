@@ -21,8 +21,8 @@
       "purpose": "any maskable"
     },
     {
-      "src": "AtmosMindLogo.png",
-      "type": "image/png",
+      "src": "AtmosMindLogo.webp",
+      "type": "image/webp",
       "sizes": "512x512"
     }
   ],

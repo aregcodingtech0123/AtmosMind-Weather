@@ -10,6 +10,16 @@
   scrollbar-width: none;
 }
 
+/* Horizontal hourly strip: avoids backdrop-filter + scroll compositor glitches on mobile WebKit/Chrome */
+.hourly-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  isolation: isolate;
+}
+
 /* Custom selection color */
 ::selection {
   background-color: rgba(255, 255, 255, 0.3);

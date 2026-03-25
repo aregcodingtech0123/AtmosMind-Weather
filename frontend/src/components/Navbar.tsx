@@ -75,8 +75,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const brandInner = (
     <>
       <img
-        src="/AtmosMindLogo.png"
+        src="/AtmosMindLogo.webp"
         alt="AtmosMind"
+        width={160}
+        height={40}
         className="h-9 w-auto shrink-0 object-contain sm:h-10"
       />
       <span className="font-heading text-lg font-bold tracking-tight whitespace-nowrap sm:text-xl md:text-2xl lg:text-3xl">
@@ -91,6 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         type="button"
         onClick={onBrandClick}
         className="flex max-w-full shrink-0 items-center gap-2 rounded-full text-left sm:gap-3"
+        aria-label={String(t('navbar.goHome', { defaultValue: 'Go to home' }))}
       >
         {brandInner}
       </button>
