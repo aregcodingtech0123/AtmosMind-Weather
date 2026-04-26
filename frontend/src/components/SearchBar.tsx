@@ -4,7 +4,7 @@ import { cn } from '../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../context/SettingsContext';
-import { autocompleteCities, geocodeCity } from '../services/api';
+import { geocodeCity, GeoSearchResult } from '../services/api';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const DEBOUNCE_MS = 300;   // Wait briefly after typing before hitting the API
@@ -17,6 +17,7 @@ export interface Suggestion {
   lon: number;
   country?: string;
   state?: string;
+  population?: number;
 }
 
 // ─── In-memory LRU-ish cache (Map preserves insertion order) ─────────────────
@@ -36,15 +37,68 @@ function cacheSet(key: string, value: Suggestion[]): void {
   suggestionCache.set(key, value);
 }
 
-function dedupeSuggestions(items: Suggestion[]): Suggestion[] {
-  // Keep raw Unicode city labels exactly as returned by API.
-  // Dedupe by coordinate identity to avoid filtering language-specific names.
-  const byLocation = new Map<string, Suggestion>();
-  for (const item of items) {
-    const key = `${Number(item.lat).toFixed(4)}|${Number(item.lon).toFixed(4)}`;
-    if (!byLocation.has(key)) byLocation.set(key, item);
+function processAndFilterResults(items: GeoSearchResult[]): Suggestion[] {
+  // 2. Hard Filtering for Residential Areas
+  const allowedFeatureCodes = ['PPL', 'PPLC', 'PPLA', 'PPLA2', 'PPLA3'];
+  const forbiddenKeywords = ['AIRP', 'RSTN', 'MT', 'POST'];
+
+  const filteredItems = items.filter(item => {
+    const code = (item.feature_code || '').toUpperCase();
+    if (forbiddenKeywords.some(fk => code.includes(fk))) {
+      return false;
+    }
+    // Explicitly discard any result that is not a populated place
+    if (!allowedFeatureCodes.includes(code)) {
+      return false;
+    }
+    return true;
+  });
+
+  // 1. Strict Deduplication (Logic Upgrade)
+  const uniqueMap = new Map<string, GeoSearchResult>();
+  for (const item of filteredItems) {
+    const uniqueKey = `${item.name}-${item.admin1 || ''}-${item.country_code || ''}`.toLowerCase().trim();
+
+    const existing = uniqueMap.get(uniqueKey);
+    const currentPop = item.population || 0;
+    const existingPop = existing?.population || 0;
+
+    // Priority Rule: If duplicates exist, keep the one with the highest population.
+    if (!existing || currentPop > existingPop) {
+      uniqueMap.set(uniqueKey, item);
+    }
   }
-  return Array.from(byLocation.values());
+
+  // 4. Data Formatting & Conversion
+  const finalResults: Suggestion[] = Array.from(uniqueMap.values())
+    .map(item => {
+      const parts = [item.name];
+      // If admin1 (state/province) is identical to name, don't show it twice.
+      if (item.admin1 && item.admin1 !== item.name) {
+        parts.push(item.admin1);
+      }
+      if (item.country) {
+        parts.push(item.country);
+      } else if (item.country_code) {
+        parts.push(item.country_code);
+      }
+
+      return {
+        name: parts.join(', '),
+        // Map from GeoSearchResult properties to Suggestion properties
+        lat: item.latitude,
+        lon: item.longitude,
+        country: item.country || item.country_code,
+        state: item.admin1,
+        population: item.population || 0
+      };
+    })
+    .sort((a, b) => (b.population || 0) - (a.population || 0)); // Priority Ranking
+
+  // 5. Debugging
+  console.log("Filtered Results:", finalResults);
+
+  return finalResults;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -80,7 +134,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // ── Fetch suggestions from backend ─────────────────────────────────────────
   const fetchSuggestions = useCallback(async (q: string) => {
-    const cacheKey = q.toLocaleLowerCase(currentLanguage);
+    // Cache key includes the language so switching UI language invalidates stale
+    // entries and fetches fresh, correctly-localized results.
+    const cacheKey = `${q.toLocaleLowerCase(currentLanguage)}::${currentLanguage}`;
 
     // 1️⃣  Cache hit — return immediately, zero network cost
     const cached = cacheGet(cacheKey);
@@ -98,11 +154,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     setIsSearching(true);
     try {
-      const data = await autocompleteCities(q, currentLanguage);
-      const results = data.suggestions ?? [];
+      // Fetch more than needed so we have enough after strict filtering
+      const rawData = await geocodeCity(q, currentLanguage, 20);
+      const processedResults = processAndFilterResults(rawData).slice(0, 8); // Keep top 8
 
-      cacheSet(cacheKey, results);   // store in cache for future keystrokes
-      setRawSuggestions(results);
+      cacheSet(cacheKey, processedResults);   // store in cache for future keystrokes
+      setRawSuggestions(processedResults);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         setRawSuggestions([]);
@@ -129,7 +186,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     // Check cache synchronously — if hit, show instantly without even waiting
-    const cacheKey = trimmed.toLocaleLowerCase(currentLanguage);
+    // Cache key includes language to avoid returning stale English entries
+    // after the user switches UI language.
+    const cacheKey = `${trimmed.toLocaleLowerCase(currentLanguage)}::${currentLanguage}`;
     if (cacheGet(cacheKey)) {
       setRawSuggestions(cacheGet(cacheKey)!);
       return;
@@ -145,8 +204,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
   }, [query, fetchSuggestions, currentLanguage]);
 
-  // Memoized unique list to avoid recomputing/filtering on every render.
-  const suggestions = useMemo(() => dedupeSuggestions(rawSuggestions), [rawSuggestions]);
+  // We already deduplicated, sorted, and formatted during fetch.
+  const suggestions = rawSuggestions;
 
   // ── Click-outside handler to close dropdown ─────────────────────────────────
   useEffect(() => {
@@ -163,23 +222,35 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ── Resolve city name → coords, then bubble up to parent ───────────────────
-  const runSearch = async (fullNameOrQuery: string) => {
-    const baseName = fullNameOrQuery.split(',')[0].trim();
-    if (!baseName) return;
+  // ── Resolve city name / handle Enter with no explicit selection ────────────
+  // Prefer already-loaded suggestion[0] so no redundant API call is needed and
+  // the user sees the exact localized label visible in the dropdown.
+  // Fallback: geocode the raw query with the active UI language so multilingual
+  // inputs like "Münih" or "中文" resolve to the correct city.
+  const runSearch = useCallback(async (fullNameOrQuery: string) => {
+    if (suggestions.length > 0) {
+      handleSelect(suggestions[0]);
+      return;
+    }
 
-    setQuery(baseName);
+    const rawQuery = fullNameOrQuery.trim();
+    if (!rawQuery) return;
+
+    const displayName = rawQuery.split(',')[0].trim();
+    setQuery(displayName);
     setRawSuggestions([]);
     setIsFocused(false);
 
     try {
-      const results = await geocodeCity(baseName, currentLanguage, 1);
-      const first = results[0];
-      if (first) onSearch(baseName, first.latitude, first.longitude);
+      const results = await geocodeCity(rawQuery, currentLanguage, 10);
+      const pplResults = processAndFilterResults(results);
+      const best = pplResults[0];
+      if (best) onSearch(displayName, best.lat, best.lon);
     } catch {
-      // Geocoding errors are non-fatal — the user can still see the weather page
+      // Non-fatal: geocoding errors don't break the UI
     }
-  };
+  }, [suggestions, currentLanguage, onSearch]);
+
 
   const handleSelect = (suggestion: Suggestion) => {
     const baseName = suggestion.name.split(',')[0].trim();
@@ -189,11 +260,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     onSearch(baseName, suggestion.lat, suggestion.lon);
   };
 
-  const triggerSearch = () => {
+  const triggerSearch = useCallback(() => {
     if (suggestions.length > 0) { handleSelect(suggestions[0]); return; }
     if (query.trim()) { runSearch(query.trim()); return; }
-  };
+  }, [suggestions, query, runSearch]);
+
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); triggerSearch(); };
+
+  // Explicit Enter handler — needed for CJK/IME keyboards where the form submit
+  // may not fire reliably during composition.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      triggerSearch();
+    }
+  };
 
   const showDropdown = isFocused && suggestions.length > 0;
 
@@ -229,6 +310,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setIsFocused(true)}
+            onKeyDown={handleKeyDown}
             placeholder={String(t('search.placeholder'))}
             autoComplete="off"
             spellCheck={false}

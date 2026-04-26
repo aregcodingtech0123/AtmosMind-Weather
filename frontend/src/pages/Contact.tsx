@@ -106,10 +106,8 @@ export default function Contact() {
       )}
     >
       <Seo
-        title={String(t('contact.seoTitle', { defaultValue: 'Contact - AtmosMind' }))}
-        description={String(
-          t('contact.seoDescription', { defaultValue: 'Get in touch with the AtmosMind team.' })
-        )}
+        title={t('contact.seoTitle')}
+        description={t('contact.seoDescription')}
         path="/contact"
         structuredData={breadcrumbSchema}
       />
@@ -128,29 +126,19 @@ export default function Contact() {
           )}
         >
           <h1 className="text-3xl md:text-4xl font-semibold text-white/90 font-heading mb-3">
-            {String(t('contact.title', { defaultValue: 'Contact' }))}
+            {t('contact.title')}
           </h1>
           <p className="text-white/70 leading-8 mb-8">
-            {String(
-              t('contact.subtitle', {
-                defaultValue:
-                  'Have a question, feedback, or a support request? Send us a message and we’ll get back to you.',
-              })
-            )}
+            {t('contact.subtitle')}
           </p>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <section className="lg:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
               <h2 className="text-lg font-semibold text-white/90 mb-2">
-                {String(t('contact.emailTitle', { defaultValue: 'Email' }))}
+                {t('contact.emailTitle')}
               </h2>
               <p className="text-sm text-white/70 leading-7">
-                {String(
-                  t('contact.emailBody', {
-                    defaultValue:
-                      'For privacy requests, AdSense policy questions, or general support, email us at:',
-                  })
-                )}
+                {t('contact.emailBody')}
               </p>
               <a
                 href={`mailto:${contactEmail}`}
@@ -162,14 +150,14 @@ export default function Contact() {
 
             <section className="lg:col-span-3 rounded-2xl border border-white/10 bg-black/20 p-5">
               <h2 className="text-lg font-semibold text-white/90 mb-4">
-                {String(t('contact.formTitle', { defaultValue: 'Send a message' }))}
+                {t('contact.formTitle')}
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="space-y-2">
                     <span className="text-sm text-white/75">
-                      {String(t('contact.nameLabel', { defaultValue: 'Name' }))}
+                      {t('contact.nameLabel') as string}
                     </span>
                     <input
                       value={name}
@@ -180,13 +168,13 @@ export default function Contact() {
                       required
                       disabled={sending}
                       className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-60"
-                      placeholder={String(t('contact.namePlaceholder', { defaultValue: 'Your name' }))}
+                      placeholder={t('contact.namePlaceholder') as string}
                     />
                   </label>
 
                   <label className="space-y-2">
                     <span className="text-sm text-white/75">
-                      {String(t('contact.emailLabel', { defaultValue: 'Email' }))}
+                      {t('contact.emailLabel') as string}
                     </span>
                     <input
                       value={email}
@@ -198,14 +186,14 @@ export default function Contact() {
                       disabled={sending}
                       type="email"
                       className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-60"
-                      placeholder={String(t('contact.emailPlaceholder', { defaultValue: 'you@example.com' }))}
+                      placeholder={t('contact.emailPlaceholder') as string}
                     />
                   </label>
                 </div>
 
                 <label className="space-y-2 block">
                   <span className="text-sm text-white/75">
-                    {String(t('contact.messageLabel', { defaultValue: 'Message' }))}
+                    {t('contact.messageLabel') as string}
                   </span>
                   <textarea
                     value={message}
@@ -217,9 +205,7 @@ export default function Contact() {
                     disabled={sending}
                     rows={6}
                     className="w-full rounded-xl bg-black/20 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 resize-y disabled:opacity-60"
-                    placeholder={String(
-                      t('contact.messagePlaceholder', { defaultValue: 'Tell us how we can help…' })
-                    )}
+                    placeholder={t('contact.messagePlaceholder') as string}
                   />
                 </label>
 
@@ -228,7 +214,7 @@ export default function Contact() {
                     className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
                     role="status"
                   >
-                    {String(t('contact.success', { defaultValue: 'Message sent successfully.' }))}
+                    {t('contact.success')}
                   </p>
                 )}
                 {formStatus === 'error' && (
@@ -236,16 +222,9 @@ export default function Contact() {
                     className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
                     role="alert"
                   >
-                    {String(
-                      isEmailJsConfigured()
-                        ? t('contact.error', {
-                            defaultValue: "We couldn't send your message. Please try again later.",
-                          })
-                        : t('contact.configError', {
-                            defaultValue:
-                              'Contact form is not configured. Set REACT_APP_EMAILJS_* and REACT_APP_ADMIN_CONTACT_MAIL.',
-                          })
-                    )}
+                    {isEmailJsConfigured()
+                      ? t('contact.error')
+                      : t('contact.configError')}
                   </p>
                 )}
 
@@ -260,18 +239,13 @@ export default function Contact() {
                   )}
                 >
                   {sending
-                    ? String(t('contact.sending', { defaultValue: 'Sending...' }))
-                    : String(t('contact.send', { defaultValue: 'Send' }))}
+                    ? t('contact.sending')
+                    : t('contact.send')}
                 </button>
               </form>
 
               <p className="mt-4 text-xs text-white/50 leading-6">
-                {String(
-                  t('contact.note', {
-                    defaultValue:
-                      'Messages are delivered securely via EmailJS. We use your email only to respond to this inquiry.',
-                  })
-                )}
+                {t('contact.note')}
               </p>
             </section>
           </div>

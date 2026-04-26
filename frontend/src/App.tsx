@@ -13,17 +13,18 @@ import { CookieConsent } from './components/CookieConsent';
 import { useWeather } from './hooks/useWeather';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useFavorites } from './hooks/useFavorites';
+
 import { FavoriteCity, WeatherCondition, AiWeather } from './types/weather';
 import type { WeatherData } from './types/weather';
 import { formatTemperature, getWeatherCondition, weatherThemes, isNightTime } from './utils/weatherUtils';
 import { cn } from './utils/cn';
-import { Cloud, CloudRain, Snowflake, Zap, Lightbulb, Sun, Instagram, Facebook } from 'lucide-react';
+import { Cloud, CloudRain, Snowflake, Zap, Lightbulb, Sun, Instagram, Facebook, RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from './context/SettingsContext';
+import { SupportedLanguage, useSettings } from './context/SettingsContext';
+import { fetchWeatherApi } from 'openmeteo';
 import {
   fetchAiWeather as fetchAiWeatherApi,
-  fetchBatchWeather,
   fetchCityAdvice,
   fetchForecastSummary,
   geocodeCity,
@@ -31,20 +32,14 @@ import {
 } from './services/api';
 import './App.css';
 
-/** Single source of truth for popular city names and images; used for batch request and cards. */
-const POPULAR_CITIES = [
-  { name: 'London, United Kingdom', image: '/cities/london.webp' },
-  { name: 'New York, United States', image: '/cities/new-york-city.webp' },
-  { name: 'Tokyo, Japan', image: '/cities/tokyo.webp' },
-  { name: 'Istanbul, Turkiye', image: '/cities/istanbul.webp' },
-  { name: 'Sydney, Australia', image: '/cities/sydney.webp' },
-  { name: 'Paris, France', image: '/cities/paris.webp' },
-  { name: 'Dubai, United Arab Emirates', image: '/cities/dubai.webp' },
-  { name: 'Bangkok, Thailand', image: '/cities/bangkok.webp' },
-  { name: 'Rome, Italy', image: '/cities/rome.webp' },
-  { name: 'Berlin, Germany', image: '/cities/berlin.webp' },
-];
+import { POPULAR_CITIES, PopularCity } from './data/popularCities';
 
+/** Dynamically resolves the image path for a given city based on its ID. */
+export function getCityImagePath(cityId: string): string {
+  return `/cities/${cityId}.avif`;
+}
+
+/** Type definition for weather data specific to a popular city card. */
 export interface PopularCityWeather {
   temperature: number | null;
   condition: string | null;
@@ -73,10 +68,13 @@ const FloatingChatbot = lazy(() =>
 );
 
 function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentLanguage, currentUnit } = useSettings();
   const location = useLocation();
   const navigate = useNavigate();
+  // Safe helper to sanitize the locale key exactly as requested
+  const langKey = (i18n.language || currentLanguage).split('-')[0] as SupportedLanguage;
+
 
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -95,7 +93,8 @@ function App() {
 
   const [popularCitiesWeather, setPopularCitiesWeather] = useState<Record<string, PopularCityWeather>>({});
   const [popularCitiesWeatherLoading, setPopularCitiesWeatherLoading] = useState(true);
-  const [popularCityLabels, setPopularCityLabels] = useState<Record<string, string>>({});
+  const [popularCitiesWeatherError, setPopularCitiesWeatherError] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(6);
 
   const { weatherData, loading, error, refetch } = useWeather(latitude, longitude, currentLanguage, currentUnit);
   const geolocation = useGeolocation();
@@ -103,7 +102,7 @@ function App() {
 
   // Get weather condition for dynamic background
   const isNight = useMemo(() => isNightTime(), []);
-  
+
   const getCondition = useCallback((): WeatherCondition => {
     if (weatherData?.current) {
       return getWeatherCondition(weatherData.current.weatherCode, isNight);
@@ -188,113 +187,124 @@ function App() {
           fetchAiWeather(cityName);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [location.pathname, location.state, fetchAiWeather, currentLanguage]);
 
   // Fetch batch weather on mount when on home: city names → temperatures for top-right bubbles
+  const fetchPopularBatch = useCallback(async () => {
+    setPopularCitiesWeatherLoading(true);
+    setPopularCitiesWeatherError(false);
+
+    try {
+      const cacheKey = `atmosmind_popular_weather_cache_${currentLanguage}_${currentUnit}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < 15 * 60 * 1000) {
+            setPopularCitiesWeather(parsed.data);
+            setPopularCitiesWeatherLoading(false);
+            return;
+          }
+        } catch {
+          // ignore cache parse error
+        }
+      }
+
+      const lats = POPULAR_CITIES.map((c) => c.latitude);
+      const lons = POPULAR_CITIES.map((c) => c.longitude);
+
+      const url = 'https://api.open-meteo.com/v1/forecast';
+      const params = {
+        latitude: lats,
+        longitude: lons,
+        temperature_unit: currentUnit === 'imperial' ? 'fahrenheit' : 'celsius',
+        current: ['temperature_2m', 'weather_code'],
+        timezone: 'auto'
+      };
+
+      const responses = await fetchWeatherApi(url, params);
+      const map: Record<string, PopularCityWeather> = {};
+
+      responses.forEach((response, i) => {
+        const current = response.current()!;
+        const temp = current.variables(0)!.value();
+        const code = current.variables(1)!.value();
+        map[POPULAR_CITIES[i].id] = {
+          temperature: temp,
+          condition: null,
+          weather_code: code
+        };
+      });
+
+      setPopularCitiesWeather(map);
+      localStorage.setItem(cacheKey, JSON.stringify({
+        data: map,
+        timestamp: Date.now()
+      }));
+    } catch (err) {
+      console.error('Batch weather fetch error:', err);
+      setPopularCitiesWeatherError(true);
+      setPopularCitiesWeather({});
+    } finally {
+      setPopularCitiesWeatherLoading(false);
+    }
+  }, [currentLanguage, currentUnit]);
+
   useEffect(() => {
     if (location.pathname !== '/' && location.pathname !== '') return;
-    const cityNames = POPULAR_CITIES.map((c) => c.name);
-    setPopularCitiesWeatherLoading(true);
-    fetchBatchWeather(cityNames, currentLanguage)
-      .then((data) => {
-        const map: Record<string, PopularCityWeather> = {};
-        const norm = (s: string) => s.trim();
-        if (Array.isArray(data.results)) {
-          for (const r of data.results) {
-            const key = norm(r.city);
-            map[key] = {
-              temperature: r.temperature ?? data.temperatures?.[r.city] ?? data.temperatures?.[key] ?? null,
-              condition: r.condition ?? null,
-              weather_code: r.weather_code ?? null,
-            };
+    fetchPopularBatch();
+  }, [location.pathname, fetchPopularBatch]);
+
+  // Update coordinates when geolocation changes and reverse-geocode to get actual city name.
+  // Performs reverse geocoding directly here instead of via a separate hook to avoid
+  // timing / re-render issues with refs.
+  useEffect(() => {
+    if (!geolocation.latitude || !geolocation.longitude) return;
+
+    const lat = geolocation.latitude;
+    const lng = geolocation.longitude;
+
+    // Set coordinates immediately so weather data starts loading
+    setLatitude(lat);
+    setLongitude(lng);
+    // Show placeholder while reverse geocoding runs
+    setSelectedCity(String(t('weather.myLocation') || 'Current Location'));
+
+    // Perform reverse geocoding to resolve the actual city name
+    let cancelled = false;
+    reverseGeocode(lat, lng, currentLanguage)
+      .then((result) => {
+        if (cancelled) return;
+
+        if (result?.name) {
+          const parts = [result.name];
+          if (result.admin1 && result.admin1 !== result.name) {
+            parts.push(result.admin1);
           }
-        }
-        if (data.temperatures) {
-          for (const [city, temp] of Object.entries(data.temperatures)) {
-            const key = norm(city);
-            if (!(key in map)) map[key] = { temperature: temp, condition: null, weather_code: null };
-            else if (map[key].temperature == null) map[key] = { ...map[key], temperature: temp };
+          if (result.country) {
+            parts.push(result.country);
+          } else if (result.country_code) {
+            parts.push(result.country_code);
           }
+          const resolvedName = parts.join(', ');
+          setSelectedCity(resolvedName);
+          fetchAiWeather(resolvedName);
+        } else {
+          // Fallback: keep the placeholder and fetch AI weather with it
+          const fallback = String(t('weather.myLocation') || 'Current Location');
+          setSelectedCity(fallback);
         }
-        setPopularCitiesWeather(map);
       })
-      .catch(() => setPopularCitiesWeather({}))
-      .finally(() => setPopularCitiesWeatherLoading(false));
-  }, [location.pathname, currentLanguage]);
+      .catch(() => {
+        if (cancelled) return;
+        // On error, keep the placeholder
+        console.warn('Reverse geocoding failed, keeping placeholder name');
+      });
 
-  useEffect(() => {
-    let disposed = false;
-    const localizePopularCities = async () => {
-      const entries = await Promise.all(
-        POPULAR_CITIES.map(async (city) => {
-          const baseName = city.name.split(',')[0].trim();
-          try {
-            const first = (await geocodeCity(baseName, currentLanguage, 1))[0];
-            if (!first?.name) return [city.name, ''] as const;
-            const label = first.name
-              ? first.country || first.country_code
-                ? `${first.name}, ${first.country ?? first.country_code}`
-                : first.name
-              : '';
-            return [city.name, label] as const;
-          } catch {
-            return [city.name, ''] as const;
-          }
-        })
-      );
-      if (!disposed) setPopularCityLabels(Object.fromEntries(entries));
-    };
-
-    // Defer work to idle time so initial render stays snappy (TBT improvement).
-    const schedule = () => {
-      if (typeof (window as any).requestIdleCallback === 'function') {
-        (window as any).requestIdleCallback(() => {
-          if (!disposed) localizePopularCities();
-        });
-      } else {
-        setTimeout(() => {
-          if (!disposed) localizePopularCities();
-        }, 0);
-      }
-    };
-
-    schedule();
-    return () => {
-      disposed = true;
-    };
-  }, [currentLanguage]);
-
-  useEffect(() => {
-    if (latitude == null || longitude == null) return;
-    let disposed = false;
-    const syncSelectedCityLabel = async () => {
-      try {
-        const first = await reverseGeocode(latitude, longitude, currentLanguage);
-        if (!first?.name || disposed) return;
-        const localizedLabel =
-          first.country || first.country_code
-            ? `${first.name}, ${first.country ?? first.country_code}`
-            : first.name;
-        setSelectedCity(localizedLabel);
-      } catch {
-        // Keep existing selected city label on localization failures.
-      }
-    };
-    syncSelectedCityLabel();
-    return () => {
-      disposed = true;
-    };
-  }, [currentLanguage, latitude, longitude]);
-
-  // Update coordinates when geolocation changes
-  useEffect(() => {
-    if (geolocation.latitude && geolocation.longitude) {
-      setLatitude(geolocation.latitude);
-      setLongitude(geolocation.longitude);
-      setSelectedCity(String(t('weather.myLocation')));
-    }
-  }, [geolocation.latitude, geolocation.longitude, t]);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geolocation.latitude, geolocation.longitude, currentLanguage]);
 
   // Handle favorite toggle
   const handleToggleFavorite = useCallback(() => {
@@ -459,7 +469,7 @@ function App() {
   }, [cityForTitle]);
 
   return (
-    <div 
+    <div
       className={cn(
         'min-h-screen transition-all duration-700 ease-in-out',
         theme.background,
@@ -503,129 +513,155 @@ function App() {
               </p>
 
               {/* Daily Weather Insight (static, visible by default for content richness) */}
-              
-              <div className="mt-12 w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {popularCities.map((city, index) => {
-                  const cityLabel = popularCityLabels[city.name] ?? '';
-                  return (
-                  <a
-                    key={city.name}
-                    href={buildCityHref(city.name)}
-                    onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
-                      // Preserve native browser behavior for middle-click, modifier-click,
-                      // and context-menu/open-in-new-tab while keeping enhanced left-click flow.
-                      if (
-                        e.defaultPrevented ||
-                        e.button !== 0 ||
-                        e.metaKey ||
-                        e.ctrlKey ||
-                        e.shiftKey ||
-                        e.altKey
-                      ) {
-                        return;
-                      }
-                      e.preventDefault();
-                      handlePopularCityClick(city.name);
-                    }}
-                    className={cn(
-                      'group relative flex flex-col rounded-3xl overflow-hidden',
-                      'min-h-[220px] sm:min-h-[260px]',
-                      'shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-white/10',
-                      'transition-all duration-500 ease-out',
-                      'hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent',
-                      'no-underline text-inherit'
-                    )}
-                    aria-label={String(t('home.openWeatherDetails', { city: cityLabel || city.name }))}
-                  >
-                    {/* Full-bleed background image with zoom on hover */}
-                    <div className="absolute inset-0 overflow-hidden">
-                      <img
-                        src={city.image}
-                        alt={cityLabel || city.name}
-                        width={390}
-                        height={260}
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                        loading={index === 0 ? 'eager' : 'lazy'}
-                        fetchPriority={index === 0 ? 'high' : 'low'}
-                      />
-                      {/* Dark gradient overlay for text readability */}
-                      <div
-                        className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"
-                        aria-hidden
-                      />
-                    </div>
 
-                    {/* Weather context: temp + icon (top right) — bound to cityData by city.name */}
-                    <div
-                      className={cn(
-                        'absolute top-4 right-4 flex items-center gap-2 px-3 py-2 rounded-2xl min-w-[4.5rem] justify-center',
-                        'bg-white/15 backdrop-blur-md border border-white/20',
-                        'text-white font-semibold text-sm'
-                      )}
-                    >
-                      {popularCitiesWeatherLoading ? (
-                        <span className="animate-pulse text-white/80">...</span>
-                      ) : (() => {
-                          const cityData = popularCitiesWeather;
-                          const key = city.name.trim();
-                          const data = cityData[city.name] ?? cityData[key];
-                          const temp = data?.temperature;
-                          const code = data?.weather_code ?? 0;
-                          const Icon = weatherCodeToIcon(code);
-                          return (
-                            <>
-                              <Icon className="w-5 h-5 text-amber-200" strokeWidth={1.5} aria-hidden />
-                              <span>{temp != null && Number.isFinite(temp) ? formatTemperature(temp, currentUnit) : '—'}</span>
-                            </>
-                          );
-                        })()}
-                    </div>
+              <div className="mt-12 w-full max-w-[1600px] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+                <AnimatePresence>
+                  {popularCities.slice(0, visibleCount).map((city, index) => {
+                    const cityLabel = city.names[langKey] || city.names['en'] || city.defaultName;
+                    // Performance: First row of cities (top 3 on desktop) are optimized as LCP items.
+                    const isLcp = index < 3;
 
-                    {/* Glassmorphism bottom overlay: city name */}
-                    <div
-                      className={cn(
-                        'absolute bottom-0 left-0 right-0 p-5',
-                        'bg-white/10 backdrop-blur-md border-t border-white/10'
-                      )}
-                    >
-                      <p className="text-white font-semibold text-lg tracking-tight drop-shadow-sm">
-                        {cityLabel || t('home.cityLoading')}
-                      </p>
-                    </div>
-                  </a>
-                );
-                })}
+                    return (
+                      <motion.a
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.3 }}
+                        key={city.id}
+                        href={buildCityHref(city.defaultName)}
+                        onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                          if (
+                            e.defaultPrevented ||
+                            e.button !== 0 ||
+                            e.metaKey ||
+                            e.ctrlKey ||
+                            e.shiftKey ||
+                            e.altKey
+                          ) {
+                            return;
+                          }
+                          e.preventDefault();
+                          handlePopularCityClick(cityLabel);
+                        }}
+                        className={cn(
+                          'group relative flex flex-col rounded-2xl overflow-hidden',
+                          'aspect-[4/3] w-full',
+                          'shadow-lg shadow-black/20 hover:shadow-2xl hover:shadow-black/40',
+                          'transition-all duration-300 ease-out',
+                          'hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent',
+                          'no-underline text-inherit'
+                        )}
+                        aria-label={String(t('home.openWeatherDetails', { city: cityLabel }))}
+                      >
+                        {/* City Background Image */}
+                        <div className="absolute inset-0 overflow-hidden bg-slate-800">
+                          <img
+                            src={getCityImagePath(city.id)}
+                            alt={cityLabel}
+                            width={1280}
+                            height={1000}
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+
+                            loading={isLcp ? 'eager' : 'lazy'}
+                            // @ts-ignore - fetchPriority is supported in modern browsers but missing from some React types
+                            fetchpriority={isLcp ? 'high' : 'auto'}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          {/* Readable Overlay: Subtle gradient for text contrast */}
+                          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
+                        </div>
+
+                        {/* Weather context: temp + icon (top right) */}
+                        <div
+                          className={cn(
+                            'absolute top-4 right-4 flex items-center gap-2 px-3 py-2 rounded-xl min-w-[4.5rem] justify-center h-[40px]',
+                            'bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_0_15px_rgba(255,255,255,0.2)]',
+                            'text-white font-bold text-base z-10'
+                          )}
+                        >
+                          {popularCitiesWeatherLoading ? (
+                            <span className="animate-pulse text-white/80">...</span>
+                          ) : popularCitiesWeatherError ? (
+                            <button
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); fetchPopularBatch(); }}
+                              className="flex items-center justify-center p-1 rounded-full hover:bg-white/25 hover:rotate-180 transition-all duration-300"
+                              aria-label="Retry weather fetch"
+                            >
+                              <RefreshCw className="w-4 h-4 text-white/90" />
+                            </button>
+                          ) : (() => {
+                            const cityData = popularCitiesWeather;
+                            const data = cityData[city.id];
+                            const temp = data?.temperature;
+                            const code = data?.weather_code ?? 0;
+                            const Icon = weatherCodeToIcon(code);
+                            return (
+                              <>
+                                <Icon className="w-5 h-5 text-amber-200" strokeWidth={1.5} aria-hidden />
+                                <span>{temp != null && Number.isFinite(temp) ? formatTemperature(temp, currentUnit) : '—'}</span>
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        {/* City name */}
+                        <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 z-10 transition-opacity duration-300">
+                          <p className="text-white font-bold text-lg sm:text-xl md:text-2xl tracking-tight drop-shadow-md">
+                            {cityLabel}
+                          </p>
+                        </div>
+                      </motion.a>
+                    );
+                  })}
+                </AnimatePresence>
               </div>
-              <div className="mt-10 w-full max-w-3xl">
+
+              <div className="mt-8 flex flex-col md:flex-row justify-center gap-4">
+                {visibleCount < popularCities.length && (
+                  <button
+                    onClick={() => setVisibleCount((prev) => Math.min(prev + 6, popularCities.length))}
+                    className="px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-all duration-300 w-full md:w-auto"
+                  >
+                    {String(t('common.showMore', 'Show More'))}
+                  </button>
+                )}
+                {visibleCount > 6 && (
+                  <button
+                    onClick={() => setVisibleCount(6)}
+                    className="px-6 py-3 rounded-full bg-black/20 hover:bg-black/30 backdrop-blur-md border border-white/10 text-white font-medium transition-all duration-300 w-full md:w-auto"
+                  >
+                    {String(t('common.showLess', 'Show Less'))}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-16 w-full max-w-3xl">
                 <div className="rounded-3xl border border-white/10 bg-black/30 backdrop-blur-md p-6">
                   <h3 className="text-lg md:text-xl font-semibold text-white/90 mb-3">
-                    Daily Weather Insight
+                    {t('home.insights.title')}
                   </h3>
                   <p className="text-sm md:text-base text-white/70 leading-7">
-                    Weather planning is most reliable when you combine a few signals instead of focusing on a
-                    single number. Temperature sets the baseline, but comfort and risk often come from wind,
-                    humidity, precipitation timing, and rapid changes through the day.
+                    {t('home.insights.mainText')}
                   </p>
                   <ul className="mt-4 list-disc pl-6 space-y-2 text-sm md:text-base text-white/70 leading-7">
                     <li>
-                      <span className="text-white/85 font-medium">Wind matters:</span> breezy conditions can
-                      make cool days feel colder and can increase heat loss during commutes.
+                      <span className="text-white/85 font-medium">{t('home.insights.windTitle')}</span> {t('home.insights.windText')}
                     </li>
                     <li>
-                      <span className="text-white/85 font-medium">Humidity changes comfort:</span> muggy air
-                      reduces sweat evaporation, so warm days feel heavier and requires more hydration.
+                      <span className="text-white/85 font-medium">{t('home.insights.humidityTitle')}</span> {t('home.insights.humidityText')}
                     </li>
                     <li>
-                      <span className="text-white/85 font-medium">Rain timing beats totals:</span> even a
-                      short shower at the wrong time can disrupt plans—check the hour-by-hour view.
+                      <span className="text-white/85 font-medium">{t('home.insights.rainTitle')}</span> {t('home.insights.rainText')}
                     </li>
                     <li>
-                      <span className="text-white/85 font-medium">Dress in layers:</span> a light base layer
-                      plus a wind/rain shell adapts better than a single heavy piece.
+                      <span className="text-white/85 font-medium">{t('home.insights.dressTitle')}</span> {t('home.insights.dressText')}
                     </li>
                   </ul>
                   <p className="mt-4 text-xs text-white/50 leading-6">
-                    Tip: Visit the Weather Guides for deeper explanations (humidity, wind chill, UV, and storm safety).
+                    {t('home.insights.tip')}
                   </p>
                 </div>
               </div>
@@ -711,7 +747,7 @@ function App() {
                 </button>
               </div>
 
-              
+
 
               {/* Hourly Forecast */}
               {weatherData.hourly && (
@@ -793,7 +829,7 @@ function App() {
                 currentCity={selectedCity}
               />
 
-              
+
             </motion.div>
           )}
         </AnimatePresence>
@@ -858,17 +894,17 @@ function App() {
               {/* Column 1: Legal */}
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
-                  Legal
+                  {t('footer.sections.legal')}
                 </h4>
                 <div className="flex flex-col gap-2 text-sm">
                   <Link to="/privacy" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
                     {t('footer.privacyPolicy')}
                   </Link>
                   <Link to="/terms" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    {String(t('footer.terms', { defaultValue: 'Terms of Service' }))}
+                    {t('footer.terms')}
                   </Link>
                   <Link to="/cookies" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    {String(t('footer.cookiePolicy', { defaultValue: 'Cookie Policy' }))}
+                    {t('footer.cookiePolicy')}
                   </Link>
                 </div>
               </div>
@@ -876,23 +912,23 @@ function App() {
               {/* Column 2: Weather Guides */}
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
-                  Weather Guides
+                  {t('footer.sections.guides')}
                 </h4>
                 <div className="flex flex-col gap-2 text-sm">
                   <Link to="/guides/humidity" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    Humidity Guide
+                    {t('footer.guides.humidity')}
                   </Link>
                   <Link to="/guides/wind-chill" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    Wind Chill Guide
+                    {t('footer.guides.windChill')}
                   </Link>
                   <Link to="/guides/what-to-wear" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    What to Wear
+                    {t('footer.guides.whatToWear')}
                   </Link>
                   <Link to="/guides/thunderstorm-safety" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    Thunderstorm Safety
+                    {t('footer.guides.thunderstorm')}
                   </Link>
                   <Link to="/guides/uv-index" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    UV Index Guide
+                    {t('footer.guides.uvIndex')}
                   </Link>
                 </div>
               </div>
@@ -900,14 +936,14 @@ function App() {
               {/* Column 3: Support */}
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80">
-                  Support
+                  {t('footer.sections.support')}
                 </h4>
                 <div className="flex flex-col gap-2 text-sm">
                   <Link to="/about" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
                     {t('footer.aboutUs')}
                   </Link>
                   <Link to="/contact" className="text-white/65 hover:text-cyan-300 transition-colors duration-200">
-                    {String(t('footer.contact', { defaultValue: 'Contact Us' }))}
+                    {t('footer.contact')}
                   </Link>
                 </div>
               </div>
@@ -917,26 +953,21 @@ function App() {
           <div className="border-t border-white/10 px-6 py-6 md:px-8">
             <div className="max-w-6xl mx-auto">
               <h4 className="text-sm font-semibold uppercase tracking-wide text-white/80 mb-3">
-                Popular Cities
+                {t('footer.sections.popularCities')}
               </h4>
               <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                {[
-                  { label: 'Istanbul', href: '/weather/Istanbul' },
-                  { label: 'London', href: '/weather/London' },
-                  { label: 'New York', href: '/weather/New%20York' },
-                  { label: 'Tokyo', href: '/weather/Tokyo' },
-                  { label: 'Paris', href: '/weather/Paris' },
-                  { label: 'Dubai', href: '/weather/Dubai' },
-                  { label: 'Berlin', href: '/weather/Berlin' },
-                ].map((c) => (
-                  <Link
-                    key={c.href}
-                    to={c.href}
-                    className="text-white/65 hover:text-cyan-300 transition-colors duration-200"
-                  >
-                    {c.label}
-                  </Link>
-                ))}
+                {popularCities.map((city) => {
+                  const label = city.names[langKey] || city.names['en'] || city.defaultName;
+                  return (
+                    <Link
+                      key={city.id}
+                      to={buildCityHref(city.defaultName)}
+                      className="text-white/65 hover:text-cyan-300 transition-colors duration-200"
+                    >
+                      {label}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           </div>

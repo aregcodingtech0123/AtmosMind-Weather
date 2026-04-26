@@ -29,20 +29,57 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const { currentLanguage, currentUnit, setLanguage, setUnit } = useSettings();
 
-  const languageOptions: Array<{ code: SupportedLanguage; label: string }> = [
-    { code: 'en', label: String(t('languages.en', { defaultValue: 'English' })) },
-    { code: 'tr', label: String(t('languages.tr', { defaultValue: 'Türkçe' })) },
-    { code: 'fr', label: String(t('languages.fr', { defaultValue: 'Français' })) },
-    { code: 'es', label: String(t('languages.es', { defaultValue: 'Español' })) },
-    { code: 'de', label: String(t('languages.de', { defaultValue: 'Deutsch' })) },
-    { code: 'ja', label: String(t('languages.ja', { defaultValue: '日本語' })) },
-    { code: 'zh', label: String(t('languages.zh', { defaultValue: '中文' })) },
-    { code: 'ko', label: String(t('languages.ko', { defaultValue: '한국어' })) },
-    { code: 'ru', label: String(t('languages.ru', { defaultValue: 'Русский' })) },
-    { code: 'ar', label: String(t('languages.ar', { defaultValue: 'العربية' })) },
-    { code: 'it', label: String(t('languages.it', { defaultValue: 'Italiano' })) },
-    { code: 'pt', label: String(t('languages.pt', { defaultValue: 'Português' })) },
-  ];
+  const languages: Array<{ code: SupportedLanguage; name: string }> = [
+    { code: 'en', name: 'English' },
+    { code: 'tr', name: 'Türkçe' },
+    { code: 'pt', name: 'Português' },
+    { code: 'es', name: 'Español' },
+    { code: 'fr', name: 'Français' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'it', name: 'Italiano' },
+    { code: 'nl', name: 'Nederlands' },
+    { code: 'fi', name: 'Suomi' },
+    { code: 'da', name: 'Dansk' },
+    { code: 'no', name: 'Norsk' },
+    { code: 'sv', name: 'Svenska' },
+    { code: 'ru', name: 'Русский' },
+    { code: 'uk', name: 'Українська' },
+    { code: 'pl', name: 'Polski' },
+    { code: 'hu', name: 'Magyar' },
+    { code: 'cs', name: 'Čeština' },
+    { code: 'el', name: 'Ελληνικά' },
+    { code: 'ro', name: 'Română' },
+    { code: 'ja', name: '日本語' },
+    { code: 'zh', name: '简体中文' },
+    { code: 'hi', name: 'हिन्दी' },
+    { code: 'bn', name: 'বাংলা' },
+    { code: 'ta', name: 'தமிழ்' },
+    { code: 'tl', name: 'Filipino' },
+    { code: 'vi', name: 'Tiếng Việt' },
+    { code: 'ms', name: 'Bahasa Melayu' },
+    { code: 'id', name: 'Bahasa Indonesia' },
+    { code: 'jv', name: 'Basa Jawa' },
+    { code: 'su', name: 'Basa Sunda' },
+    { code: 'th', name: 'ไทย' },
+    { code: 'ar', name: 'العربية' },
+    { code: 'ur', name: 'اردو' },
+    { code: 'fa', name: 'فارسی' },
+    { code: 'ha', name: 'Hausa' },
+    { code: 'sw', name: 'Kiswahili' },
+    { code: 'az', name: 'Azərbaycan' },
+    { code: 'kk', name: 'Қазақша' },
+    { code: 'uz', name: 'Oʻzbekcha' },
+    { code: 'ky', name: 'Кыргызча' },
+    { code: 'tk', name: 'Türkmençe' },
+    { code: 'ko', name: '한국어' },
+  ].sort((a, b) => a.name.localeCompare(b.name)) as Array<{ code: SupportedLanguage; name: string }>;
+
+  const renderLangOptions = () =>
+    languages.map((opt) => (
+      <option key={opt.code} value={opt.code}>
+        {opt.name}
+      </option>
+    ));
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -115,11 +152,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         className="w-full shrink-0 rounded-xl border border-white/20 bg-black/20 px-3 py-2.5 text-sm text-white/90 focus:outline-none focus:ring-2 focus:ring-white/50 md:w-auto md:min-w-[8.5rem] md:max-w-[12rem] lg:max-w-none"
         aria-label={String(t('navbar.languageLabel'))}
       >
-        {languageOptions.map((option) => (
-          <option key={option.code} value={option.code}>
-            {option.label}
-          </option>
-        ))}
+        {renderLangOptions()}
       </select>
     </>
   );

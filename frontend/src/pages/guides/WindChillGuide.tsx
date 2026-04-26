@@ -3,18 +3,20 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cn } from '../../utils/cn';
+import { useTranslation } from 'react-i18next';
 import { Navbar } from '../../components/Navbar';
 import { Seo } from '../../components/Seo';
 
 export default function WindChillGuide() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const breadcrumbSchema = {
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://atmosmindweather.com/' },
-      { '@type': 'ListItem', position: 2, name: 'Weather Guides', item: 'https://atmosmindweather.com/guides' },
-      { '@type': 'ListItem', position: 3, name: 'Wind Chill Guide', item: 'https://atmosmindweather.com/guides/wind-chill' },
+      { '@type': 'ListItem', position: 1, name: t('navbar.goHome'), item: 'https://atmosmind.app/' },
+      { '@type': 'ListItem', position: 2, name: t('footer.sections.guides'), item: 'https://atmosmind.app/guides' },
+      { '@type': 'ListItem', position: 3, name: t('footer.guides.windChill'), item: 'https://atmosmind.app/guides/wind-chill' },
     ],
   };
 
@@ -36,8 +38,8 @@ export default function WindChillGuide() {
       )}
     >
       <Seo
-        title="Wind Chill Guide: Why Wind Feels Colder | AtmosMind"
-        description="Understand wind chill, when it matters, and how to dress for windy cold weather. Practical planning tips for commuting, travel, and outdoor time."
+        title={t('guides.windChill.seoTitle')}
+        description={t('guides.windChill.seoDescription')}
         path="/guides/wind-chill"
         structuredData={breadcrumbSchema}
       />
@@ -56,51 +58,15 @@ export default function WindChillGuide() {
           )}
         >
           <h1 className="text-3xl md:text-4xl font-semibold text-white/90 font-heading mb-6">
-            Wind Chill Guide: the “feels colder” effect
+            {t('guides.windChill.title')}
           </h1>
 
           <div className="space-y-6 text-white/75 leading-8">
-            <p>
-              Wind chill describes how cold conditions feel on exposed skin when wind increases heat
-              loss. The air temperature is one part of the story; your body constantly warms a thin
-              layer of air next to your skin. Wind disrupts that warm layer, replacing it with colder
-              air and accelerating heat transfer. The result is a faster rate of cooling, which your
-              nervous system interprets as “colder,” even though the thermometer did not change.
-            </p>
-
-            <p>
-              A key point: wind chill is most relevant when temperatures are cool to cold, typically
-              below about 10°C, and especially near or below freezing. In warm weather, wind does not
-              create wind chill in the same way—it can still feel cooler, but the risk profile is
-              different. Wind chill formulas estimate equivalent cooling on bare skin, not what a
-              jacket or insulated clothing will feel like. Think of it as guidance for exposure risk
-              and comfort, not a precise temperature measurement.
-            </p>
-
-            <p>
-              For daily planning, wind chill affects how you dress and how long you can stay outside.
-              If the air temperature is -2°C and the wind is strong, your face and hands can lose heat
-              quickly. That is why wind protection often matters more than adding a thicker sweater.
-              A wind-resistant outer layer blocks convection, allowing your inner insulation to do its
-              job. If you feel cold even with warm clothing, check whether your outer layer is
-              windproof and whether gaps at the neck, cuffs, or waist are letting wind in.
-            </p>
-
-            <p>
-              Wind also increases the risk of frostbite in very cold conditions because exposed skin
-              cools faster. Even moderate wind can shorten safe exposure times. Protecting extremities
-              is the priority: gloves or mittens, a hat, and a face covering when needed. For commuting,
-              plan for wind at bridges, open areas, or coastal streets where gusts can be much stronger
-              than sheltered readings.
-            </p>
-
-            <p>
-              Use wind chill as an action trigger. If wind speeds are high and temperatures are low,
-              choose layers that combine insulation with wind protection, and consider warming breaks.
-              If your plans involve long outdoor time, the “feels like” value is often more practical
-              than the raw temperature. In other words, wind chill isn’t just a number—it’s a hint that
-              the environment can pull heat from you faster than you expect.
-            </p>
+            <p>{t('guides.windChill.p1')}</p>
+            <p>{t('guides.windChill.p2')}</p>
+            <p>{t('guides.windChill.p3')}</p>
+            <p>{t('guides.windChill.p4')}</p>
+            <p>{t('guides.windChill.p5')}</p>
           </div>
         </motion.main>
       </div>

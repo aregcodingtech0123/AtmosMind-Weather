@@ -3,7 +3,7 @@ import { GlassCard } from './GlassCard';
 import { WeatherIcon } from './WeatherIcon';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { HourlyData } from '../types/weather';
-import { formatTemperature, formatHourlyTime, isNightTime } from '../utils/weatherUtils';
+import { formatTemperature, isNightTime } from '../utils/weatherUtils';
 import { cn } from '../utils/cn';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,7 @@ interface HourlyForecastProps {
 }
 
 export const HourlyForecast: React.FC<HourlyForecastProps> = ({ data, limit = 24 }) => {
-  const { currentUnit } = useSettings();
+  const { currentUnit, currentLanguage } = useSettings();
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -107,7 +107,11 @@ export const HourlyForecast: React.FC<HourlyForecastProps> = ({ data, limit = 24
                   isNow ? 'text-white' : 'text-white/60'
                 )}
               >
-                {isNow ? t('weather.now') : formatHourlyTime(item.time)}
+                {isNow ? t('weather.now') : new Intl.DateTimeFormat(currentLanguage, { 
+                  hour: '2-digit', 
+                  minute: '2-digit', 
+                  hour12: false 
+                }).format(item.time)}
               </span>
               <span className="flex shrink-0 [&_svg]:block">
                 <WeatherIcon code={Number(item.weatherCode)} isNight={isNight} size="md" />

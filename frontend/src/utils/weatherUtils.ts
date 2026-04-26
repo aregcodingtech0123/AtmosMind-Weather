@@ -116,35 +116,40 @@ export const formatTemperature = (tempCelsius: number, unit: TemperatureUnit = '
   return `${Math.round(converted)}${suffix}`;
 };
 
-// Format time for hourly display
-export const formatHourlyTime = (date: Date): string => {
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+// Format time for hourly display (24-hour format)
+export const formatHourlyTime = (date: Date, locale: string = 'en-GB'): string => {
+  return new Intl.DateTimeFormat(locale, { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    hour12: false 
+  }).format(date);
 };
 
 // Format date for daily display
-export const formatDailyDate = (date: Date): string => {
-  return date.toLocaleDateString('en-US', { weekday: 'short' });
+export const formatDailyDate = (date: Date, locale: string = 'en-US'): string => {
+  return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date);
 };
 
 // Format full date
-export const formatFullDate = (date: Date): string => {
-  return date.toLocaleDateString('en-US', { 
+export const formatFullDate = (date: Date, locale: string = 'en-US'): string => {
+  return new Intl.DateTimeFormat(locale, { 
     weekday: 'long', 
     month: 'long', 
     day: 'numeric' 
-  });
+  }).format(date);
 };
 
 // Prepare chart data from hourly data
 export const prepareChartData = (
   times: Date[], 
   temperatures: Float32Array | number[],
-  limit: number = 24
+  limit: number = 24,
+  locale: string = 'en-GB'
 ): ChartDataPoint[] => {
   return times.slice(0, limit).map((time, index) => ({
     time: time.toISOString(),
     temperature: Math.round(temperatures[index]),
-    hour: formatHourlyTime(time),
+    hour: formatHourlyTime(time, locale),
   }));
 };
 

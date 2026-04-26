@@ -130,6 +130,13 @@ export default function AboutUs() {
                 {t('about.qa3A')}
               </p>
             </section>
+
+            <section className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <h2 className="text-xl font-semibold text-white/90 mb-2">{t('about.qa4Q')}</h2>
+              <p className="text-white/70 leading-7">
+                {t('about.qa4A')}
+              </p>
+            </section>
           </div>
         </motion.main>
       </div>

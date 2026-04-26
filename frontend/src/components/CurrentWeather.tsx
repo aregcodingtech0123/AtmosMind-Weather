@@ -26,7 +26,7 @@ export const CurrentWeatherComponent: React.FC<CurrentWeatherProps> = ({
   isFavorite,
   onToggleFavorite
 }) => {
-  const { currentUnit } = useSettings();
+    const { currentUnit, currentLanguage } = useSettings();
   const { t } = useTranslation();
   const isNight = isNightTime();
 
@@ -57,7 +57,7 @@ export const CurrentWeatherComponent: React.FC<CurrentWeatherProps> = ({
               />
             </button>
           </div>
-          <p className="text-white/70 text-sm mb-6">{formatFullDate(new Date())}</p>
+          <p className="text-white/70 text-sm mb-6">{formatFullDate(new Date(), currentLanguage)}</p>
           
           <div className="flex items-start gap-4">
             <WeatherIcon code={data.weatherCode} isNight={isNight} size="xl" />

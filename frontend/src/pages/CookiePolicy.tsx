@@ -37,12 +37,8 @@ export default function CookiePolicy() {
       )}
     >
       <Seo
-        title={String(t('cookies.seoTitle', { defaultValue: 'Cookie Policy - AtmosMind' }))}
-        description={String(
-          t('cookies.seoDescription', {
-            defaultValue: 'Learn how AtmosMind uses cookies and similar technologies for analytics and advertising.',
-          })
-        )}
+        title={t('cookies.seoTitle')}
+        description={t('cookies.seoDescription')}
         path="/cookies"
         structuredData={breadcrumbSchema}
       />
@@ -61,59 +57,44 @@ export default function CookiePolicy() {
           )}
         >
           <h1 className="text-3xl md:text-4xl font-semibold text-white/90 font-heading mb-8">
-            {String(t('cookies.title', { defaultValue: 'Cookie Policy' }))}
+            {t('cookies.title')}
           </h1>
 
           <section className="space-y-3 mb-8">
             <h2 className="text-xl md:text-2xl font-semibold text-white/85">
-              {String(t('cookies.whatTitle', { defaultValue: 'What are cookies?' }))}
+              {t('cookies.whatTitle')}
             </h2>
             <p className="text-white/70 leading-8">
-              {String(
-                t('cookies.whatBody', {
-                  defaultValue:
-                    'Cookies are small text files stored on your device. Similar technologies include local storage and device identifiers. They help websites remember preferences and measure performance.',
-                })
-              )}
+              {t('cookies.whatBody')}
             </p>
           </section>
 
           <section className="space-y-3 mb-8">
             <h2 className="text-xl md:text-2xl font-semibold text-white/85">
-              {String(t('cookies.whyTitle', { defaultValue: 'Why we use cookies' }))}
+              {t('cookies.whyTitle')}
             </h2>
             <ul className="list-disc pl-6 space-y-2 text-white/70 leading-8">
-              <li>{String(t('cookies.whyItem1', { defaultValue: 'To store language and unit preferences.' }))}</li>
-              <li>{String(t('cookies.whyItem2', { defaultValue: 'To understand usage and improve performance.' }))}</li>
-              <li>{String(t('cookies.whyItem3', { defaultValue: 'To support advertising, including Google AdSense.' }))}</li>
+              <li>{t('cookies.whyItem1')}</li>
+              <li>{t('cookies.whyItem2')}</li>
+              <li>{t('cookies.whyItem3')}</li>
             </ul>
           </section>
 
           <section className="space-y-3 mb-8">
             <h2 className="text-xl md:text-2xl font-semibold text-white/85">
-              {String(t('cookies.adsTitle', { defaultValue: 'Advertising and Google AdSense' }))}
+              {t('cookies.adsTitle')}
             </h2>
             <p className="text-white/70 leading-8">
-              {String(
-                t('cookies.adsBody', {
-                  defaultValue:
-                    'We may use Google AdSense to serve ads. Google and its partners may use cookies or device identifiers to show ads, measure ad performance, and (where permitted) personalize ads.',
-                })
-              )}
+              {t('cookies.adsBody')}
             </p>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-xl md:text-2xl font-semibold text-white/85">
-              {String(t('cookies.controlsTitle', { defaultValue: 'Your choices' }))}
+              {t('cookies.controlsTitle')}
             </h2>
             <p className="text-white/70 leading-8">
-              {String(
-                t('cookies.controlsBody', {
-                  defaultValue:
-                    'You can manage cookies through your browser settings. Where required, you can accept or reject advertising cookies using the consent banner.',
-                })
-              )}
+              {t('cookies.controlsBody')}
             </p>
           </section>
         </motion.main>

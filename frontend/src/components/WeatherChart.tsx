@@ -34,9 +34,9 @@ const CustomTooltip = ({ active, payload, unit }: any) => {
 };
 
 export const WeatherChart: React.FC<WeatherChartProps> = ({ data, limit = 24 }) => {
-  const { currentUnit } = useSettings();
+  const { currentUnit, currentLanguage } = useSettings();
   const { t } = useTranslation();
-  const chartData = prepareChartData(data.time, data.temperature2m, limit);
+  const chartData = prepareChartData(data.time, data.temperature2m, limit, currentLanguage);
   const reactId = useId();
   const gradientId = `temperatureGradient-${reactId.replace(/:/g, '')}`;
   const containerRef = useRef<HTMLDivElement>(null);

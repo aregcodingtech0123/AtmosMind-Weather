@@ -2,7 +2,7 @@ import React from 'react';
 import { GlassCard } from './GlassCard';
 import { WeatherIcon } from './WeatherIcon';
 import { DailyData } from '../types/weather';
-import { formatTemperature, formatDailyDate } from '../utils/weatherUtils';
+import { formatTemperature } from '../utils/weatherUtils';
 import { cn } from '../utils/cn';
 import { motion } from 'framer-motion';
 import { useSettings } from '../context/SettingsContext';
@@ -13,7 +13,7 @@ interface DailyForecastProps {
 }
 
 export const DailyForecast: React.FC<DailyForecastProps> = ({ data }) => {
-  const { currentUnit } = useSettings();
+  const { currentUnit, currentLanguage } = useSettings();
   const { t } = useTranslation();
   return (
     <GlassCard className="p-6 col-span-full lg:col-span-4" testId="daily-forecast">
@@ -44,7 +44,9 @@ export const DailyForecast: React.FC<DailyForecastProps> = ({ data }) => {
                   'text-sm font-medium w-12',
                   isToday ? 'text-white' : 'text-white/70'
                 )}>
-                  {isToday ? t('weather.today') : formatDailyDate(time)}
+                  {isToday 
+                    ? t('weather.today') 
+                    : new Intl.DateTimeFormat(currentLanguage, { weekday: 'short' }).format(time)}
                 </span>
               </div>
 

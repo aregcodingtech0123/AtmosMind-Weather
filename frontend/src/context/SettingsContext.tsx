@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import i18n from '../i18n';
 
-export type SupportedLanguage = 'en' | 'tr' | 'fr' | 'es' | 'de' | 'ja' | 'zh' | 'ko' | 'ru' | 'ar' | 'it' | 'pt';
+export type SupportedLanguage =
+  | 'en' | 'tr' | 'fr' | 'es' | 'de' | 'ja' | 'zh' | 'hi' | 'ru' | 'ar' | 'it' | 'pt'
+  | 'bn' | 'ur' | 'tl' | 'vi' | 'uk' | 'pl' | 'nl' | 'fi' | 'da' | 'no' | 'sv' | 'ha'
+  | 'ta' | 'ms' | 'id' | 'jv' | 'su' | 'hu' | 'cs' | 'el' | 'ro' | 'fa' | 'th' | 'sw'
+  | 'az' | 'kk' | 'uz' | 'ky' | 'tk' | 'ko';
 export type TemperatureUnit = 'metric' | 'imperial';
 
 interface SettingsContextValue {
@@ -19,10 +23,16 @@ const UNIT_STORAGE_KEY = 'atmosmind.unit';
 const LANGUAGE_FALLBACK: SupportedLanguage = 'en';
 const UNIT_FALLBACK: TemperatureUnit = 'metric';
 
-const RTL_LANGUAGES = new Set<SupportedLanguage>(['ar']);
+const RTL_LANGUAGES = new Set<SupportedLanguage>(['ar', 'ur', 'fa']);
 
 function isSupportedLanguage(value: string | null): value is SupportedLanguage {
-  return !!value && ['en', 'tr', 'fr', 'es', 'de', 'ja', 'zh', 'ko', 'ru', 'ar', 'it', 'pt'].includes(value);
+  const supported: string[] = [
+    'en', 'tr', 'fr', 'es', 'de', 'ja', 'zh', 'hi', 'ru', 'ar', 'it', 'pt',
+    'bn', 'ur', 'tl', 'vi', 'uk', 'pl', 'nl', 'fi', 'da', 'no', 'sv', 'ha',
+    'ta', 'ms', 'id', 'jv', 'su', 'hu', 'cs', 'el', 'ro', 'fa', 'th', 'sw',
+    'az', 'kk', 'uz', 'ky', 'tk', 'ko'
+  ];
+  return !!value && supported.includes(value);
 }
 
 function isSupportedUnit(value: string | null): value is TemperatureUnit {
@@ -31,6 +41,10 @@ function isSupportedUnit(value: string | null): value is TemperatureUnit {
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const lngParam = params.get('lng');
+    if (isSupportedLanguage(lngParam)) return lngParam;
+
     const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     return isSupportedLanguage(saved) ? saved : LANGUAGE_FALLBACK;
   });

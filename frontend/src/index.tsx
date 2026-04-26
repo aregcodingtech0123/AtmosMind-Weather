@@ -5,6 +5,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import './index.css';
 import './i18n';
 import App from './App';
+import ScrollToTop from './components/ScrollToTop';
 import AboutUs from './pages/AboutUs';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
@@ -26,6 +27,7 @@ root.render(
     <HelmetProvider>
       <SettingsProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Suspense fallback={null}>
             <Routes>
               <Route path="/about" element={<AboutUs />} />

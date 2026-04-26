@@ -70,23 +70,13 @@ export default function PrivacyPolicy() {
 
           <section className="space-y-3 mb-8">
             <h2 className="text-xl md:text-2xl font-semibold text-white/85">
-              {String(t('privacy.adsCookiesTitle', { defaultValue: 'Advertising, Cookies, and Google AdSense' }))}
+              {t('privacy.adsCookiesTitle')}
             </h2>
             <p className="text-white/70 leading-8">
-              {String(
-                t('privacy.adsCookiesBody1', {
-                  defaultValue:
-                    'AtmosMind may display ads served by Google AdSense. Google and its partners may use cookies or device identifiers to serve and measure ads, limit frequency, and (where permitted) personalize ads.',
-                })
-              )}
+              {t('privacy.adsCookiesBody1')}
             </p>
             <p className="text-white/70 leading-8">
-              {String(
-                t('privacy.adsCookiesBody2', {
-                  defaultValue:
-                    'Depending on your location, you may be asked to provide consent for non-essential cookies. You can accept or reject these cookies via the consent banner and manage cookie settings in your browser.',
-                })
-              )}
+              {t('privacy.adsCookiesBody2')}
             </p>
           </section>
 

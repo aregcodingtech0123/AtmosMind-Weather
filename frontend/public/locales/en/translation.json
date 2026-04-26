@@ -9,7 +9,51 @@
     "menu": "Menu",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
-    "tabletMenuHint": "Language and unit are in the bar above."
+    "tabletMenuHint": "Language and unit are in the bar above.",
+    "goHome": "Go to home"
+  },
+  "languages": {
+    "en": "English",
+    "tr": "Türkçe",
+    "pt": "Português",
+    "de": "Deutsch",
+    "es": "Español",
+    "it": "Italiano",
+    "fr": "Français",
+    "ru": "Русский",
+    "ja": "日本語",
+    "zh": "简体中文",
+    "ar": "العربية",
+    "hi": "हिन्दी",
+    "bn": "বাংলা",
+    "ur": "اردو",
+    "tl": "Filipino",
+    "vi": "Tiếng Việt",
+    "uk": "Українська",
+    "pl": "Polski",
+    "nl": "Nederlands",
+    "fi": "Suomi",
+    "da": "Dansk",
+    "no": "Norsk",
+    "sv": "Svenska",
+    "ha": "Hausa",
+    "ta": "தமிழ்",
+    "ms": "Bahasa Melayu",
+    "id": "Bahasa Indonesia",
+    "jv": "Basa Jawa",
+    "su": "Basa Sunda",
+    "hu": "Magyar",
+    "cs": "Čeština",
+    "el": "Ελληνικά",
+    "ro": "Română",
+    "fa": "فارسی",
+    "th": "ไทย",
+    "sw": "Kiswahili",
+    "az": "Azərbaycan",
+    "kk": "Қазақша",
+    "uz": "Oʻzbekcha",
+    "ky": "Кыргызча",
+    "tk": "Türkmençe"
   },
   "search": {
     "searchCity": "Search city",
@@ -23,7 +67,20 @@
     "welcome": "Welcome to AtmosMind",
     "tagline": "Search for a city or use your current location to get started with detailed weather forecasts.",
     "openWeatherDetails": "Open weather details for {{city}}",
-    "cityLoading": "Loading city..."
+    "cityLoading": "Loading city...",
+    "insights": {
+      "title": "Daily Weather Insight",
+      "mainText": "Weather planning is most reliable when you combine a few signals instead of focusing on a single number. Temperature sets the baseline, but comfort and risk often come from wind, humidity, precipitation, and rapid changes through the day.",
+      "windTitle": "Wind matters:",
+      "windText": "breezy conditions can make cool days feel colder and can increase heat loss during commutes.",
+      "humidityTitle": "Humidity changes comfort:",
+      "humidityText": "muggy air reduces sweat evaporation, so warm days feel heavier and requires more hydration.",
+      "rainTitle": "Rain timing beats totals:",
+      "rainText": "even a short shower at the wrong time can disrupt plans—check the hour-by-hour view.",
+      "dressTitle": "Dress in layers:",
+      "dressText": "a light base layer plus a wind/rain shell adapts better than a single heavy piece.",
+      "tip": "Tip: Visit the Weather Guides for deeper explanations (humidity, wind chill, UV, and storm safety)."
+    }
   },
   "actions": {
     "weatherForecast": "Weather Forecast",
@@ -38,6 +95,9 @@
     "personalizedAdviceFor": "Personalized advice for {{city}}",
     "gettingAdvice": "Getting advice...",
     "clickGetAdviceHint": "Click \"Get Advice\" above for clothing and activity tips based on the current forecast."
+  },
+  "disclaimer": {
+    "aiGenerated": "AI-generated content. May be inaccurate—verify for critical decisions."
   },
   "weather": {
     "myLocation": "My Location",
@@ -74,11 +134,24 @@
   },
   "footer": {
     "brandTagline": "AI-Powered Weather Platform.",
-    "quickLinks": "Quick Links",
-    "home": "Home",
-    "aboutUs": "About Us",
-    "resources": "Resources",
+    "sections": {
+      "legal": "Legal",
+      "guides": "Weather Guides",
+      "support": "Support",
+      "popularCities": "Popular Cities"
+    },
+    "guides": {
+      "humidity": "Humidity Guide",
+      "windChill": "Wind Chill Guide",
+      "whatToWear": "What to Wear",
+      "thunderstorm": "Thunderstorm Safety",
+      "uvIndex": "UV Index Guide"
+    },
     "privacyPolicy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "cookiePolicy": "Cookie Policy",
+    "aboutUs": "About Us",
+    "contact": "Contact Us",
     "connect": "Connect",
     "instagram": "AtmosMind on Instagram",
     "facebook": "AtmosMind on Facebook",
@@ -96,16 +169,21 @@
     "title": "About Us",
     "mainParagraph": "At AtmosMind, we're redefining how you perceive and interact with weather. More than just an ordinary weather forecast, AtmosMind is your personal AI-powered climate intelligence assistant. Imagine being able to ask our AI detailed questions about any location on Earth, and receiving personalized, context-aware recommendations based on both current and future weather patterns. Whether you're planning a trip, optimizing your daily commute, or simply curious about the world around you, AtmosMind provides the deep insights you need to make informed decisions.",
     "qa1Q": "What is AtmosMind?",
-    "qa1A": "AtmosMind is a weather intelligence application that combines real-time forecasts with AI interpretation so users can quickly understand what conditions mean for their daily decisions.",
-    "qa2Q": "How does AI help?",
-    "qa2A": "Instead of presenting only numbers, AtmosMind explains likely weather impacts, suggests what to wear, and recommends weather-appropriate activities based on current and upcoming patterns.",
-    "qa3Q": "Why trust AtmosMind for planning?",
-    "qa3A": "AtmosMind is built for clarity, speed, and practical actionability. It merges verified weather data and AI-guided summaries to support confident travel, commute, and day-to-day planning."
+    "qa1A": "AtmosMind is an AI-powered weather intelligence platform that combines real-time forecast data with actionable insights for daily planning and travel.",
+    "qa2Q": "How does AI help in AtmosMind?",
+    "qa2A": "AtmosMind uses AI to interpret weather signals and transform raw temperature, wind, humidity, and precipitation trends into practical recommendations.",
+    "qa3Q": "Who should use AtmosMind?",
+    "qa3A": "AtmosMind is designed for commuters, travelers, and weather-conscious users who need trustworthy and fast climate-aware guidance.",
+    "qa4Q": "Where does AtmosMind weather data come from?",
+    "qa4A": "AtmosMind integrates trusted weather data providers and presents them through a user-friendly AI-assisted forecasting interface."
   },
   "privacy": {
     "seoTitle": "Privacy Policy - AtmosMind AI Weather Dashboard",
     "seoDescription": "Read AtmosMind's privacy practices, including data collection, usage, security standards, and user rights for AI-powered weather services.",
     "title": "Privacy Policy",
+    "adsCookiesTitle": "Advertising, Cookies, and Google AdSense",
+    "adsCookiesBody1": "AtmosMind may display ads served by Google AdSense. Google and its partners may use cookies or device identifiers to serve and measure ads, limit frequency, and (where permitted) personalize ads.",
+    "adsCookiesBody2": "Depending on your location, you may be asked to provide consent for non-essential cookies. You can accept or reject these cookies via the consent banner and manage cookie settings in your browser.",
     "introductionTitle": "Introduction",
     "introductionBody": "This Privacy Policy explains how AtmosMind collects, uses, and safeguards information when you use our platform. Our goal is to provide transparent practices and maintain trust while delivering intelligent weather insights.",
     "collectTitle": "Information We Collect",
@@ -145,5 +223,94 @@
     "error": "We couldn't send your message. Please try again later.",
     "configError": "Contact form is not configured. Set REACT_APP_EMAILJS_* and REACT_APP_ADMIN_CONTACT_MAIL on the server.",
     "note": "Messages are delivered securely via EmailJS. We use your email only to respond to this inquiry."
+  },
+  "terms": {
+    "seoTitle": "Terms of Service - AtmosMind",
+    "seoDescription": "Read the Terms of Service for AtmosMind, including AI and weather data disclaimers.",
+    "title": "Terms of Service",
+    "intro": "These Terms of Service govern your use of AtmosMind. By accessing or using the service, you agree to these terms.",
+    "serviceTitle": "Service Description",
+    "serviceBody": "AtmosMind provides weather dashboards, city search, and AI-generated insights intended for general informational use. Weather data may be sourced from third-party providers and presented in different units and languages.",
+    "aiTitle": "AI-Generated Insights",
+    "aiBody": "Some content is generated by AI. AI outputs may be inaccurate, incomplete, or outdated. You are responsible for verifying information before making decisions based on it.",
+    "noWarrantyTitle": "No Warranty",
+    "noWarrantyBody": "AtmosMind is provided “as is” and “as available” without warranties of any kind. We do not guarantee accuracy, availability, or fitness for a particular purpose.",
+    "limitationTitle": "Limitation of Liability",
+    "limitationBody": "To the maximum extent permitted by law, AtmosMind and its operators are not liable for any indirect, incidental, special, or consequential damages arising from your use of the service.",
+    "adsTitle": "Advertising",
+    "adsBody": "AtmosMind may display advertising, including ads served by Google AdSense. Ads may use cookies or device identifiers to measure performance and, where permitted, personalize ads.",
+    "changesTitle": "Changes to These Terms",
+    "changesBody": "We may update these Terms from time to time. Continued use of the service after changes become effective constitutes acceptance of the revised Terms."
+  },
+  "cookies": {
+    "seoTitle": "Cookie Policy - AtmosMind",
+    "seoDescription": "Learn how AtmosMind uses cookies and similar technologies for analytics and advertising.",
+    "title": "Cookie Policy",
+    "whatTitle": "What are cookies?",
+    "whatBody": "Cookies are small text files stored on your device. Similar technologies include local storage and device identifiers. They help websites remember preferences and measure performance.",
+    "whyTitle": "Why we use cookies",
+    "whyItem1": "To store language and unit preferences.",
+    "whyItem2": "To understand usage and improve performance.",
+    "whyItem3": "To support advertising, including Google AdSense.",
+    "adsTitle": "Advertising and Google AdSense",
+    "adsBody": "We may use Google AdSense to serve ads. Google and its partners may use cookies or device identifiers to show ads, measure ad performance, and (where permitted) personalize ads.",
+    "controlsTitle": "Your choices",
+    "controlsBody": "You can manage cookies through your browser settings. Where required, you can accept or reject advertising cookies using the consent banner."
+  },
+  "guides": {
+    "humidity": {
+      "seoTitle": "Humidity Explained: Comfort, Dew Point, and Health | AtmosMind",
+      "seoDescription": "A practical humidity guide: relative humidity vs dew point, why humid air feels hotter, and how to plan for comfort, sleep, and outdoor activities.",
+      "title": "Humidity Guide: What it means and why it matters",
+      "p1": "Humidity is one of the most misunderstood weather numbers. Two cities can show the same temperature, yet feel completely different: one crisp and comfortable, the other sticky and exhausting. The reason is moisture in the air. When we talk about humidity, we are usually seeing relative humidity (RH), expressed as a percentage. RH is not “how much water is in the air” by itself—it is how close the air is to being saturated at the current temperature. Warm air can hold more water vapor than cold air, so the same amount of moisture can produce very different RH values as the temperature changes.",
+      "p2": "Because RH depends on temperature, the best “how it feels” companion metric is often the dew point. Dew point is the temperature at which the air becomes saturated and condensation begins. Higher dew points mean more water vapor in the air. As a practical rule of thumb: dew points below about 10°C feel dry and comfortable; 10–16°C feel pleasant; 16–20°C can feel noticeably humid; above 20°C often feels muggy, and above 24°C can feel oppressive for many people.",
+      "p3": "Humidity also affects your body’s ability to cool itself. Sweating works by evaporation. When the air is already full of moisture, sweat evaporates more slowly, so you retain more heat. That is why humid days can feel hotter than the thermometer suggests, and why “feels like” temperatures often rise during muggy conditions. For exercise and outdoor work, high humidity increases perceived exertion and can raise the risk of heat stress. Plan breaks, hydration, and shade more aggressively on high-dew-point days.",
+      "p4": "Indoors, humidity influences sleep quality, allergies, and even how a room smells. Very low humidity can dry out skin and airways, while very high humidity supports mold growth. Many homes target an indoor RH around 40–60% for a balance of comfort and health. In cold climates, keeping indoor humidity too high can cause condensation on windows. In hot climates, dehumidification can dramatically improve comfort even without lowering the temperature much.",
+      "p5": "When using AtmosMind, treat humidity as an action signal. If humidity is high and temperatures are warm, prioritize breathable clothing, avoid heavy midday activity, and consider a slower pace. If humidity is low, protect your skin and lips, and stay mindful of dehydration—dry air can mask how much fluid you are losing. In short: humidity is not just a number; it is a key driver of comfort, safety, and daily planning."
+    },
+    "windChill": {
+      "seoTitle": "Wind Chill Guide: Why Wind Feels Colder | AtmosMind",
+      "seoDescription": "Understand wind chill, when it matters, and how to dress for windy cold weather. Practical planning tips for commuting, travel, and outdoor time.",
+      "title": "Wind Chill Guide: the “feels colder” effect",
+      "p1": "Wind chill describes how cold conditions feel on exposed skin when wind increases heat loss. The air temperature is one part of the story; your body constantly warms a thin layer of air next to your skin. Wind disrupts that warm layer, replacing it with colder air and accelerating heat transfer. The result is a faster rate of cooling, which your nervous system interprets as “colder,” even though the thermometer did not change.",
+      "p2": "A key point: wind chill is most relevant when temperatures are cool to cold, typically below about 10°C, and especially near or below freezing. In warm weather, wind does not create wind chill in the same way—it can still feel cooler, but the risk profile is different. Wind chill formulas estimate equivalent cooling on bare skin, not what a jacket or insulated clothing will feel like. Think of it as guidance for exposure risk and comfort, not a precise temperature measurement.",
+      "p3": "For daily planning, wind chill affects how you dress and how long you can stay outside. If the air temperature is -2°C and the wind is strong, your face and hands can lose heat quickly. That is why wind protection often matters more than adding a thicker sweater. A wind-resistant outer layer blocks convection, allowing your inner insulation to do its job. If you feel cold even with warm clothing, check whether your outer layer is windproof and whether gaps at the neck, cuffs, or waist are letting wind in.",
+      "p4": "Wind also increases the risk of frostbite in very cold conditions because exposed skin cools faster. Even moderate wind can shorten safe exposure times. Protecting extremities is the priority: gloves or mittens, a hat, and a face covering when needed. For commuting, plan for wind at bridges, open areas, or coastal streets where gusts can be much stronger than sheltered readings.",
+      "p5": "Use wind chill as an action trigger. If wind speeds are high and temperatures are low, choose layers that combine insulation with wind protection, and consider warming breaks. If your plans involve long outdoor time, the “feels like” value is often more practical than the raw temperature. In other words, wind chill isn’t just a number—it’s a hint that the environment can pull heat from you faster than you expect."
+    },
+    "whatToWear": {
+      "seoTitle": "What to Wear by Temperature (and Wind/Rain) | AtmosMind",
+      "seoDescription": "A practical clothing guide by temperature bands, with adjustments for wind, rain, and humidity. Build comfortable outfits for commuting and travel.",
+      "title": "What to Wear Guide: temperature, wind, rain, and comfort",
+      "p1": "“What should I wear today?” is the most practical weather question. A single temperature is not enough—wind, humidity, precipitation, and how long you will be outside can change the best choice. A good outfit strategy starts with a simple system: a breathable base layer, optional insulation, and a protective outer layer for wind and rain. With this approach you can adapt quickly as conditions shift through the day.",
+      "p2": "Here are useful temperature bands for most people, assuming light wind and no rain. Above 25°C: prioritize lightweight, breathable fabrics and sun protection. 18–25°C: a t-shirt or light top is often enough; carry a thin layer if evenings cool down. 12–18°C: long sleeves or a light jacket becomes comfortable, especially in shade. 5–12°C: add a warmer mid-layer (sweater or fleece) and consider a wind-resistant jacket. 0–5°C: insulation matters; combine a warm mid-layer with a windproof shell, plus a hat. Below 0°C: aim for layered insulation, gloves, and a scarf or neck gaiter—exposed skin cools quickly.",
+      "p3": "Now adjust for conditions. Wind increases heat loss; if it is breezy, treat the day as a few degrees colder and use a wind-resistant outer layer. Humidity changes perceived heat: high humidity in warm weather makes it feel hotter, so choose moisture-wicking fabrics and plan hydration. Rain changes everything: even a light drizzle can make cool temperatures feel uncomfortable. If there is any chance of rain, prioritize a packable waterproof shell or umbrella. Wet clothing loses insulation and can be dangerous in cold conditions.",
+      "p4": "For commuting and travel, “time outside” is the hidden variable. A 5-minute walk is very different from a 45-minute outdoor errand. If you will be outside longer, dress for the worst part of the day and build in ventilation options (zippers, removable layers). If you transition between indoors and outdoors, avoid overheating: too much insulation can make you sweat, and sweat can cool you later when you step back outside.",
+      "p5": "Finally, consider footwear. In rain or snow, waterproof shoes and traction are more important than an extra sweater. In hot weather, breathable shoes reduce discomfort. A small checklist works well: temperature band, wind, rain chance, and planned time outside. Use AtmosMind’s forecasts and AI insights to refine these choices, but keep the layering system as your reliable baseline."
+    },
+    "thunderstorm": {
+      "seoTitle": "Thunderstorm Safety: Protecting Yourself from Lightning and Heavy Rain | AtmosMind",
+      "seoDescription": "Essential safety tips for when a thunderstorm hits. Learn what to do indoors and outdoors to stay safe from lightning and flash floods.",
+      "title": "Thunderstorm Safety Guide: Staying Safe When the Skies Darken",
+      "p1": "Thunderstorms can develop quickly and bring multiple hazards at once: lightning, sudden wind gusts, heavy rain, hail, and localized flooding. The safest strategy is to treat a thunderstorm forecast as a planning signal. If you have outdoor activities, commuting by bike or scooter, or travel plans, look at timing and intensity and choose safer windows for movement. A few minutes of preparation can prevent hours of disruption or serious risk.",
+      "p2": "Lightning is the most dangerous thunderstorm hazard for people outdoors. If you can hear thunder, you are close enough to be struck by lightning. Move to a substantial building or a fully enclosed metal vehicle. Avoid open fields, hilltops, isolated trees, and water. If you cannot reach shelter, minimize your exposure: spread out from others, avoid being the tallest object, and move away from metal fences or poles. Do not lie flat; instead, reduce contact with the ground and protect your head.",
+      "p3": "Wind and hail can cause injuries and property damage. Secure loose items (balcony furniture, lightweight planters, outdoor decorations) before storms arrive. When gusts are expected, avoid parking under trees and keep distance from weak branches. Hail can shatter windows and damage vehicles; if hail is possible, prioritize covered parking or indoor shelter. For pedestrians, a hard surface like a helmet or bag can provide limited protection while you move quickly toward shelter.",
+      "p4": "Heavy rain can produce flash flooding even if the broader forecast looks moderate. Flooding is most dangerous in underpasses, low-lying streets, and small streams. Never drive through flooded roads; water depth and current are hard to judge and can move a vehicle. If you are on foot, avoid walking through fast-moving water. In urban areas, drainage can be overwhelmed quickly, so treat intense rainfall as a reason to delay travel when possible.",
+      "p5": "After a storm passes, hazards may remain. Downed lines, debris, and slippery surfaces are common. Use a cautious route and watch for updated alerts. Thunderstorms are a normal part of weather, but the best outcomes come from simple rules: seek shelter early, respect wind and water, and adjust your plans rather than trying to “push through”. AtmosMind’s forecasts and insights can help you time your day to stay safe and comfortable."
+    },
+    "uvIndex": {
+      "seoTitle": "UV Index Guide: Sun Safety and Planning | AtmosMind",
+      "seoDescription": "Learn what the UV Index means, how it changes through the day, and practical sun protection tips for commuting, sports, and travel.",
+      "title": "UV Index Guide: understanding sun exposure",
+      "p1": "The UV Index is a simple scale that estimates the intensity of ultraviolet radiation at the Earth’s surface. UV is invisible, but its effects are real: sunburn, skin aging, eye damage, and increased long-term skin cancer risk. A common misconception is that UV only matters on hot days. In reality, UV can be high even when the air feels cool, especially at high altitude or during clear spring days. That is why UV Index is a planning metric, not a “beach only” number.",
+      "p2": "The scale typically groups values as low (0–2), moderate (3–5), high (6–7), very high (8–10), and extreme (11+). As the number rises, the time to sunburn shortens. The safest habit is to treat UV 3+ as a cue to use protection if you will be outside for any length of time. UV peaks around solar noon, so midday outdoor activity has the highest exposure even if morning and evening feel comfortable.",
+      "p3": "Clouds reduce UV sometimes, but not always. Thin clouds can still allow significant UV through, and bright surfaces like sand, water, and snow reflect UV, increasing exposure. Snow reflection is especially important in winter sports settings. In cities, UV risk can still be meaningful during commutes, outdoor lunches, and long walks—especially if you spend time in open areas with limited shade.",
+      "p4": "Practical protection is straightforward: seek shade during peak hours, wear sunglasses with UV protection, and cover skin with a hat and long sleeves when feasible. Sunscreen is most effective when applied generously and re-applied; many people under-apply. Choose a broad-spectrum product and reapply after sweating or water exposure. Eye protection matters too—UV can contribute to irritation and long-term issues, so sunglasses are not just a style accessory.",
+      "p5": "Use the UV Index as a small daily decision tool. If UV is high, adjust outdoor exercise to earlier or later, bring a hat, and plan hydration. If you are traveling, remember that UV increases with altitude and can remain strong near the equator year-round. When combined with AtmosMind’s weather and AI insights, UV awareness helps you avoid surprises and protects you over the long term."
+    }
+  },
+  "common": {
+    "showMore": "Show More",
+    "showLess": "Show Less"
   }
 }

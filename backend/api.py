@@ -186,7 +186,8 @@ def ai_weather(req: WeatherRequest, request: Request):
     question = (
         f"Lütfen '{req.city}' şehri için güncel hava durumunu getir. "
         f"get_weather_in_city aracını kullan ve kısa, anlaşılır yanıt ver. "
-        f"You MUST respond in '{req.language}' and use {'Fahrenheit (°F)' if req.unit == 'imperial' else 'Celsius (°C)'} for all temperature values."
+        f"You are a multi-lingual assistant. You must respond in the same language currently selected by the user in the UI. If the UI is set to 'Español', your responses must be in Spanish. If '한국어', respond in Korean. The active language is '{req.language}'. "
+        f"Use {'Fahrenheit (°F)' if req.unit == 'imperial' else 'Celsius (°C)'} for all temperature values."
     )
 
     ai_answer = hava_durumu_asistani(question)
@@ -233,24 +234,43 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
     """
     Tiered city search — shared by both autocomplete endpoints.
 
-    Tier 1 — Redis ZRANGEBYLEX (sub-millisecond, top-1000 popular cities):
-        Uses the sorted-set lex index built at startup.
-        e.g. prefix 'lon' → [London, United Kingdom] instantly.
+    Tier 0 — Localized Open-Meteo for non-English UI (filtered to PPL* feature codes).
+    Tier 1 — Redis ZRANGEBYLEX (sub-millisecond, top-1000 popular cities).
+    Tier 2 — SQLite LIKE prefix query (indexed on name_lower).
+    Tier 3 — Open-Meteo external fallback (filtered to PPL* feature codes).
 
-    Tier 2 — SQLite LIKE prefix query (indexed on name_lower):
-        Only executed if Redis returns fewer than MIN_SUGGESTIONS results.
-        Covers the full city database including obscure cities.
-
-    Tier 3 — Open-Meteo fallback via real-time HTTP request:
-        Executed if we still have fewer than MIN_SUGGESTIONS results.
+    Only populated places (feature_code starting with 'PPL') are kept.
+    Results are sorted by population descending and deduplicated by
+    the semantic key: name_lower|admin1_lower|country_code_upper.
     """
     if not prefix or len(prefix) < MIN_QUERY_LEN:
         return []
 
-    # Deduplicate by semantic location key (name + rounded coordinates),
-    # not by display text. This avoids duplicates like:
-    # "Ankara, TR" and "Ankara, TR (Ankara)".
-    suggestions_set: set[tuple[str, float, float]] = set()
+    # PPL feature codes cover populated places only (cities, towns, villages).
+    # Excluded: AIRP (airports), RSTN (rail stations), LCTY (localities), etc.
+    ALLOWED_FEATURE_PREFIXES = ("PPL",)
+
+    def _is_ppl(feature_code: str | None) -> bool:
+        if not feature_code:
+            return True  # SQLite/Redis rows don't carry feature_code — allow them through
+        return str(feature_code).upper().startswith(ALLOWED_FEATURE_PREFIXES)
+
+    def _make_dedup_key(name: str, admin1: str | None, country_code: str | None) -> tuple:
+        return (
+            name.strip().casefold(),
+            (admin1 or "").strip().casefold(),
+            (country_code or "").strip().upper(),
+        )
+
+    def _make_display(name: str, admin1: str | None, country: str | None) -> str:
+        parts = [name.strip()]
+        if admin1 and admin1.strip():
+            parts.append(admin1.strip())
+        if country and country.strip():
+            parts.append(country.strip())
+        return ", ".join(parts)
+
+    suggestions_set: set[tuple] = set()
     suggestions_ordered: list[dict] = []
 
     normalized_language = (language or "en").strip().casefold().split("-")[0]
@@ -261,16 +281,22 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
             url = "https://geocoding-api.open-meteo.com/v1/search"
             params = {
                 "name": prefix,
-                "count": 10,
+                "count": 15,
                 "language": normalized_language,
                 "format": "json",
             }
             resp = requests.get(url, params=params, timeout=2.0)
             if resp.status_code == 200:
                 data = resp.json()
-                for row in data.get("results", []):
+                rows = sorted(
+                    data.get("results", []),
+                    key=lambda r: r.get("population", 0) or 0,
+                    reverse=True,
+                )
+                for row in rows:
+                    if not _is_ppl(row.get("feature_code")):
+                        continue
                     name = row.get("name")
-                    country = row.get("country_code") or row.get("country", "")
                     if not name:
                         continue
                     try:
@@ -278,21 +304,22 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
                         lon = float(row.get("longitude", 0))
                     except (TypeError, ValueError):
                         continue
-                    dedupe_key = (str(name).strip().casefold(), round(lat, 2), round(lon, 2))
-                    if dedupe_key in suggestions_set:
+                    admin1 = row.get("admin1") or ""
+                    country_code = row.get("country_code") or row.get("country") or ""
+                    dedup_key = _make_dedup_key(name, admin1, country_code)
+                    if dedup_key in suggestions_set:
                         continue
-                    suggestions_set.add(dedupe_key)
+                    suggestions_set.add(dedup_key)
                     suggestions_ordered.append({
-                        "name": f"{name}, {country}" if country else name,
+                        "name": _make_display(name, admin1, country_code),
                         "lat": lat,
                         "lon": lon,
+                        "population": row.get("population") or 0,
                     })
                     if len(suggestions_ordered) >= MAX_SUGGESTIONS:
                         break
         except Exception as exc:
             logger.warning("Localized Open-Meteo autocomplete failed for %r: %s", prefix, exc)
-        # For non-English UI, do not fall back to Redis/SQLite English labels.
-        # Return only localized API names to preserve character integrity.
         return suggestions_ordered[:MAX_SUGGESTIONS]
 
     # ── Tier 1: Redis ZRANGEBYLEX ─────────────────────────────────────────────
@@ -307,13 +334,20 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
                         lon = float(s["lon"])
                     except (KeyError, TypeError, ValueError):
                         continue
-                    dedupe_key = (str(s.get("name", "")).strip().casefold(), round(lat, 2), round(lon, 2))
-                    if dedupe_key not in suggestions_set:
-                        suggestions_set.add(dedupe_key)
+                    # Redis entries are pre-filtered popular cities; no feature_code available
+                    raw_name = s.get("name", "")
+                    # Parse existing "City, Country" display from Redis into components
+                    parts = [p.strip() for p in raw_name.split(",")]
+                    city_name = parts[0] if parts else raw_name
+                    country_part = parts[-1] if len(parts) > 1 else ""
+                    dedup_key = _make_dedup_key(city_name, None, country_part)
+                    if dedup_key not in suggestions_set:
+                        suggestions_set.add(dedup_key)
                         suggestions_ordered.append({
-                            "name": s.get("name", ""),
+                            "name": raw_name,
                             "lat": lat,
                             "lon": lon,
+                            "population": s.get("population", 0) or 0,
                         })
         except Exception as exc:
             logger.warning("Redis autocomplete failed for %r: %s", prefix, exc)
@@ -329,14 +363,17 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
             for row in sqlite_rows:
                 lat = float(row["latitude"])
                 lon = float(row["longitude"])
-                display = f"{row['name']}, {row['country']}"
-                dedupe_key = (str(row["name"]).strip().casefold(), round(lat, 2), round(lon, 2))
-                if dedupe_key not in suggestions_set:
-                    suggestions_set.add(dedupe_key)
+                city_name = row["name"]
+                country_part = row.get("country") or row.get("country_code") or ""
+                admin1_part = row.get("admin1") or ""
+                dedup_key = _make_dedup_key(city_name, admin1_part, country_part)
+                if dedup_key not in suggestions_set:
+                    suggestions_set.add(dedup_key)
                     suggestions_ordered.append({
-                        "name": display,
+                        "name": _make_display(city_name, admin1_part, country_part),
                         "lat": lat,
-                        "lon": lon
+                        "lon": lon,
+                        "population": row.get("population", 0) or 0,
                     })
         except Exception as exc:
             logger.exception("SQLite autocomplete failed for prefix %r: %s", prefix, exc)
@@ -347,44 +384,48 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
             url = "https://geocoding-api.open-meteo.com/v1/search"
             params = {
                 "name": prefix,
-                "count": 10,
+                "count": 15,
                 "language": normalized_language,
                 "format": "json"
             }
             resp = requests.get(url, params=params, timeout=2.0)
             if resp.status_code == 200:
                 data = resp.json()
-                results = data.get("results", [])
-                for row in results:
+                rows = sorted(
+                    data.get("results", []),
+                    key=lambda r: r.get("population", 0) or 0,
+                    reverse=True,
+                )
+                for row in rows:
+                    if not _is_ppl(row.get("feature_code")):
+                        continue
                     name = row.get("name")
-                    country = row.get("country_code") or row.get("country", "")
                     if not name:
                         continue
-                        
-                    admin1 = row.get("admin1")
-                    if admin1 and isinstance(admin1, str):
-                        country = f"{country} ({admin1})"
-                        
-                    display = f"{name}, {country}" if country else name
-
                     try:
                         lat = float(row.get("latitude", 0))
                         lon = float(row.get("longitude", 0))
                     except (TypeError, ValueError):
                         continue
-                    dedupe_key = (str(name).strip().casefold(), round(lat, 2), round(lon, 2))
-
-                    if dedupe_key not in suggestions_set:
-                        suggestions_set.add(dedupe_key)
+                    admin1 = row.get("admin1") or ""
+                    country_code = row.get("country_code") or ""
+                    country_display = row.get("country") or country_code
+                    dedup_key = _make_dedup_key(name, admin1, country_code)
+                    if dedup_key not in suggestions_set:
+                        suggestions_set.add(dedup_key)
                         suggestions_ordered.append({
-                            "name": display,
+                            "name": _make_display(name, admin1, country_display),
                             "lat": lat,
-                            "lon": lon
+                            "lon": lon,
+                            "population": row.get("population") or 0,
                         })
                         if len(suggestions_ordered) >= MAX_SUGGESTIONS:
                             break
         except Exception as exc:
             logger.warning("Open-Meteo fallback failed for prefix %r: %s", prefix, exc)
+
+    # Sort by population descending so major cities always appear first
+    suggestions_ordered.sort(key=lambda s: s.get("population", 0) or 0, reverse=True)
 
     return suggestions_ordered[:MAX_SUGGESTIONS]
 

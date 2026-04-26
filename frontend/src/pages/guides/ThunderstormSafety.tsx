@@ -3,18 +3,20 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { cn } from '../../utils/cn';
+import { useTranslation } from 'react-i18next';
 import { Navbar } from '../../components/Navbar';
 import { Seo } from '../../components/Seo';
 
 export default function ThunderstormSafety() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const breadcrumbSchema = {
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://atmosmindweather.com/' },
-      { '@type': 'ListItem', position: 2, name: 'Weather Guides', item: 'https://atmosmindweather.com/guides' },
-      { '@type': 'ListItem', position: 3, name: 'Thunderstorm Safety', item: 'https://atmosmindweather.com/guides/thunderstorm-safety' },
+      { '@type': 'ListItem', position: 1, name: t('navbar.goHome'), item: 'https://atmosmind.app/' },
+      { '@type': 'ListItem', position: 2, name: t('footer.sections.guides'), item: 'https://atmosmind.app/guides' },
+      { '@type': 'ListItem', position: 3, name: t('footer.guides.thunderstorm'), item: 'https://atmosmind.app/guides/thunderstorm-safety' },
     ],
   };
 
@@ -36,8 +38,8 @@ export default function ThunderstormSafety() {
       )}
     >
       <Seo
-        title="Thunderstorm Safety: Lightning, Wind, and Flooding | AtmosMind"
-        description="A practical thunderstorm safety guide: lightning precautions, what to avoid outdoors, and how to plan for gusts, hail, and flash flooding."
+        title={t('guides.thunderstorm.seoTitle')}
+        description={t('guides.thunderstorm.seoDescription')}
         path="/guides/thunderstorm-safety"
         structuredData={breadcrumbSchema}
       />
@@ -56,51 +58,15 @@ export default function ThunderstormSafety() {
           )}
         >
           <h1 className="text-3xl md:text-4xl font-semibold text-white/90 font-heading mb-6">
-            Thunderstorm Safety Guide
+            {t('guides.thunderstorm.title')}
           </h1>
 
           <div className="space-y-6 text-white/75 leading-8">
-            <p>
-              Thunderstorms can develop quickly and bring multiple hazards at once: lightning, sudden
-              wind gusts, heavy rain, hail, and localized flooding. The safest strategy is to treat a
-              thunderstorm forecast as a planning signal. If you have outdoor activities, commuting by
-              bike or scooter, or travel plans, look at timing and intensity and choose safer windows
-              for movement. A few minutes of preparation can prevent hours of disruption or serious risk.
-            </p>
-
-            <p>
-              Lightning is the most dangerous thunderstorm hazard for people outdoors. If you can hear
-              thunder, you are close enough to be struck by lightning. Move to a substantial building or
-              a fully enclosed metal vehicle. Avoid open fields, hilltops, isolated trees, and water. If
-              you cannot reach shelter, minimize your exposure: spread out from others, avoid being the
-              tallest object, and move away from metal fences or poles. Do not lie flat; instead, reduce
-              contact with the ground and protect your head.
-            </p>
-
-            <p>
-              Wind and hail can cause injuries and property damage. Secure loose items (balcony furniture,
-              lightweight planters, outdoor decorations) before storms arrive. When gusts are expected,
-              avoid parking under trees and keep distance from weak branches. Hail can shatter windows and
-              damage vehicles; if hail is possible, prioritize covered parking or indoor shelter. For
-              pedestrians, a hard surface like a helmet or bag can provide limited protection while you
-              move quickly toward shelter.
-            </p>
-
-            <p>
-              Heavy rain can produce flash flooding even if the broader forecast looks moderate. Flooding
-              is most dangerous in underpasses, low-lying streets, and small streams. Never drive through
-              flooded roads; water depth and current are hard to judge and can move a vehicle. If you are
-              on foot, avoid walking through fast-moving water. In urban areas, drainage can be overwhelmed
-              quickly, so treat intense rainfall as a reason to delay travel when possible.
-            </p>
-
-            <p>
-              After a storm passes, hazards may remain. Downed lines, debris, and slippery surfaces are
-              common. Use a cautious route and watch for updated alerts. Thunderstorms are a normal part
-              of weather, but the best outcomes come from simple rules: seek shelter early, respect wind
-              and water, and adjust your plans rather than trying to “push through.” AtmosMind’s forecasts
-              and insights can help you time your day to stay safe and comfortable.
-            </p>
+            <p>{t('guides.thunderstorm.p1')}</p>
+            <p>{t('guides.thunderstorm.p2')}</p>
+            <p>{t('guides.thunderstorm.p3')}</p>
+            <p>{t('guides.thunderstorm.p4')}</p>
+            <p>{t('guides.thunderstorm.p5')}</p>
           </div>
         </motion.main>
       </div>
