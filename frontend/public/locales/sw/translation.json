@@ -1,4 +1,3 @@
-
 {
   "navbar": {
     "languageLabel": "Lugha",
@@ -124,7 +123,9 @@
     "thinking": "Inafikiria...",
     "placeholder": "Uliza kuhusu hali ya hewa...",
     "send": "Tuma",
-    "errorFallback": "Samahani, imeshindwa kupata jibu. Tafadhali jaribu tena."
+    "errorFallback": "Samahani, imeshindwa kupata jibu. Tafadhali jaribu tena.",
+    "tooltipWear": "Nivae nini leo?",
+    "tooltipRainTomorrow": "Kesho mvua itanyesha?"
   },
   "footer": {
     "brandTagline": "Jukwaa la hali ya hewa la kisasa linaloendeshwa na AI.",

@@ -1,4 +1,3 @@
-
 {
   "navbar": {
     "languageLabel": "Język",
@@ -124,7 +123,9 @@
     "thinking": "Myślę...",
     "placeholder": "Zapytaj o pogodę...",
     "send": "Wyślij",
-    "errorFallback": "Przepraszamy, nie udało się uzyskać odpowiedzi. Spróbuj ponownie."
+    "errorFallback": "Przepraszamy, nie udało się uzyskać odpowiedzi. Spróbuj ponownie.",
+    "tooltipWear": "Co powinienem dziś założyć?",
+    "tooltipRainTomorrow": "Czy jutro będzie padać?"
   },
   "footer": {
     "brandTagline": "Inteligentna platforma pogodowa oparta na AI.",

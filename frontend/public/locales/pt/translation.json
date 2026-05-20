@@ -123,7 +123,9 @@
     "thinking": "Pensando...",
     "placeholder": "Pergunte sobre o tempo...",
     "send": "Enviar",
-    "errorFallback": "Desculpe, não consegui obter uma resposta. Por favor, tente novamente."
+    "errorFallback": "Desculpe, não consegui obter uma resposta. Por favor, tente novamente.",
+    "tooltipWear": "O que devo vestir hoje?",
+    "tooltipRainTomorrow": "Vai chover amanhã?"
   },
   "messages": {
     "failedToLoadAiWeather": "Falha ao carregar o tempo por IA",

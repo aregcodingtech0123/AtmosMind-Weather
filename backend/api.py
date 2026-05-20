@@ -11,10 +11,13 @@ from collections import defaultdict, deque
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*google.generativeai.*")
 
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from weather_assistant import hava_durumu_asistani, get_live_weather, get_current_weather_by_coords, geocode_city
 # city_autocomplete_ai (Gemini-based) is no longer used for autocomplete.
@@ -152,6 +155,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Mirror frontend security headers when the API is exposed directly (non-Vercel).
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "X-DNS-Prefetch-Control": "off",
+}
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        for key, value in _SECURITY_HEADERS.items():
+            if key not in response.headers:
+                response.headers[key] = value
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS: wildcard origin requires allow_credentials=False (browser + Starlette rules).
 # Allows any Vercel preview/production origin without maintaining a static list.
@@ -500,12 +524,20 @@ def get_forecast_summary_endpoint(req: GetForecastSummaryRequest, request: Reque
 
 # ─── Global weather chatbot (Feature 2) ──────────────────────────────────────
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str = Field(..., min_length=1, max_length=500)
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_control_chars(cls, value: str) -> str:
+        cleaned = "".join(ch for ch in value if ch == "\n" or ch == "\t" or ord(ch) >= 32)
+        if not cleaned.strip():
+            raise ValueError("Message content cannot be empty.")
+        return cleaned
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=40)
     language: str = Field(default="en", min_length=2, max_length=8)
     unit: str = Field(default="metric", min_length=2, max_length=16)
 

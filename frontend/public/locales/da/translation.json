@@ -123,7 +123,9 @@
     "thinking": "Tænker...",
     "placeholder": "Spørg om vejret...",
     "send": "Send",
-    "errorFallback": "Beklager, kunne ikke hente et svar. Prøv venligst igen."
+    "errorFallback": "Beklager, kunne ikke hente et svar. Prøv venligst igen.",
+    "tooltipWear": "Hvad skal jeg have på i dag?",
+    "tooltipRainTomorrow": "Regner det i morgen?"
   },
   "footer": {
     "brandTagline": "AI-drevet smart vejrplatform.",

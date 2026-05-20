@@ -1,7 +1,8 @@
 """
-Global weather chatbot with function calling: LLM can call get_current_weather(city_name)
-to fetch real-time data. Conversation history is preserved; tool calls are intercepted
-and executed by the backend, then results are fed back to the LLM for the final reply.
+Global weather chatbot with function calling: LLM can call get_current_weather or
+get_weather_forecast to fetch live and future data. Conversation history is preserved;
+tool calls are intercepted and executed by the backend, then results are fed back to
+the LLM for the final Markdown-formatted reply.
 """
 import os
 import re
@@ -11,7 +12,7 @@ import logging
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*google.generativeai.*")
 import google.generativeai as genai
 
-from weather_assistant import get_live_weather
+from weather_assistant import get_live_weather, get_weather_forecast
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -86,31 +87,52 @@ OFFENSIVE_LANGUAGE_MESSAGE = (
     "conversation respectful and focused on weather or climate-related topics."
 )
 
-SYSTEM_PROMPT = """You are the AtmosMind AI Assistant, a specialized weather and climate intelligence expert.
+SYSTEM_PROMPT = """You are an expert AI Meteorologist and Personal Advisor integrated into the AtmosMind weather platform.
+
+Role:
+- Provide accurate, context-aware weather information and personalized advice for both current conditions and future forecasts.
+- Maintain a helpful, professional, and friendly tone. Prioritize clarity and accessibility.
+
+Forecasting and advisory support:
+- Handle questions about current weather and any upcoming date or time range.
+- For future dates (tomorrow, next Tuesday, this weekend, etc.), call get_weather_forecast before answering and cite the matching day or hours from the tool data.
+- For right-now or today-only current conditions, call get_current_weather.
+- Give precise forecasts: temperature, precipitation, wind, humidity, and general conditions for the requested period.
+- Offer personalized, actionable advice on how to dress and what precautions to take for those specific conditions (e.g., waterproof shoes and an umbrella when rain is likely).
+- If the timeframe is vague, assume the most immediate upcoming period and state that assumption briefly.
+
+Output formatting (required for the chat UI):
+- Use Markdown for structure.
+- Use bold section headings on their own line, each followed by a blank line before the next paragraph. Example:
+
+**Current Conditions**
+
+Temperature is 18°C with light rain.
+
+**What to Wear**
+
+Bring a waterproof jacket and shoes.
+
+- Never place raw ** markers mid-sentence on the same line as other text; headings must be standalone lines.
+- Use short paragraphs and bullet lists where helpful.
 
 Scope:
 - Answer only weather, meteorology, climate trends, and practical lifestyle/travel recommendations based on weather.
-- Typical supported topics include: forecasts, precipitation, wind, humidity, driving safety, what to wear, and best travel timing based on climate patterns.
-- Interpret implicit location prompts as weather intent. If the user says things like "How about London?", "Give me advice about Berlin", or "Tell me about Paris", treat this as a request for weather-based guidance.
+- Interpret implicit location prompts as weather intent (e.g., "How about London?" → weather guidance for London).
+- If the user asks a clearly non-weather city question, acknowledge briefly and steer to weather-based guidance.
 
 Tool usage:
-- When the user asks about weather in a specific city, use the get_current_weather tool to fetch live data before answering.
-- If a tool call fails, explain the issue briefly and suggest a weather-focused retry.
-
-Local weather guide behavior:
-- For city/location prompts, provide:
-  1) current conditions,
-  2) practical packing/clothing advice,
-  3) weather-suitable activity recommendations.
-- If the user asks a clearly non-weather city question (e.g., museums, politics, history), do not answer that domain directly; acknowledge briefly and steer to weather-based guidance for that city.
+- Always fetch data with tools before stating numbers; do not invent forecasts.
+- You are an entity extractor for place names: pass ONLY the bare city/placename the geocoder expects — no grammatical suffixes, no Turkish/japanese particles glued to the name, no quotes, no full sentence.
+  * Example TR: from "2 gün sonra Kopenhag'a gideceğim" use city_name "Kopenhag" or "Copenhagen", never "Kopenhag'a".
+  * Example DE: from "nach Berlin fahren" use "Berlin".
+  * Example AR: use "Paris" / "باريس" stripped to the placename token only if the API expects Latin; prefer common English/local atlas spellings when unsure.
+- If a tool returns geocode_attempts or a hint in the error payload, briefly explain and politely ask the user for the standard city name or country — do not abandon the weather topic.
+- If a tool call fails, use the error and hint fields to suggest a concise retry; keep the conversation about weather and travel planning.
 
 Off-topic policy:
-- If the user asks about topics outside weather/climate/travel-by-weather (e.g., coding, politics, math, history, trivia), politely decline.
-- Use this exact decline response:
-As your AtmosMind AI Assistant, I am specialized in weather and climate-related insights. I'm unable to answer questions outside of this field. However, I'd be happy to help you with the weather forecast or travel advice for any city!
-
-Style:
-- Professional, helpful, science-oriented, and concise."""
+- If the user asks about topics outside weather/climate/travel-by-weather, politely decline using this exact response:
+As your AtmosMind AI Assistant, I am specialized in weather and climate-related insights. I'm unable to answer questions outside of this field. However, I'd be happy to help you with the weather forecast or travel advice for any city!"""
 
 OFFENSIVE_PATTERNS = [
     # English profanity / insults / hate slurs (non-exhaustive baseline)
@@ -228,18 +250,50 @@ USER_TEXT:
 TOOLS_SCHEMA = [
     {
         "name": "get_current_weather",
-        "description": "Get the current weather (temperature, condition, humidity, wind) for a given city. Use this when the user asks about weather in a specific city.",
+        "description": (
+            "Get the current weather (temperature, condition, humidity, wind) for a city. "
+            "Use for now, today, or immediate conditions only."
+        ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "city_name": {
                     "type": "STRING",
-                    "description": "City name, e.g. Istanbul, London, New York",
+                    "description": (
+                        "Bare city or town name only, atlas-style, for geocoding. Strip grammar: "
+                        "no Turkish suffixes (e.g. dative with apostrophe), no surrounding words. "
+                        "Good: Copenhagen, Kopenhag, Istanbul. Bad: inflected or sentence fragments."
+                    ),
                 },
             },
             "required": ["city_name"],
         },
-    }
+    },
+    {
+        "name": "get_weather_forecast",
+        "description": (
+            "Get current weather plus daily and hourly forecast for a city. "
+            "Use when the user asks about tomorrow, upcoming days, weekends, or any future date or time range."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "city_name": {
+                    "type": "STRING",
+                    "description": (
+                        "Bare city or town name only, atlas-style, for geocoding. Strip grammar: "
+                        "no Turkish suffixes (e.g. dative with apostrophe), no surrounding words. "
+                        "Good: Copenhagen, Kopenhag, Istanbul. Bad: inflected or sentence fragments."
+                    ),
+                },
+                "forecast_days": {
+                    "type": "INTEGER",
+                    "description": "Number of forecast days to include (1-16). Default 7.",
+                },
+            },
+            "required": ["city_name"],
+        },
+    },
 ]
 
 _chat_model = genai.GenerativeModel(
@@ -336,13 +390,19 @@ def chat(messages: list[dict], language: str = "en", unit: str = "metric") -> st
                 return (response.text or "").strip()
 
             fc = part.function_call
-            if fc.name != "get_current_weather":
+            if fc.name not in ("get_current_weather", "get_weather_forecast"):
                 break
 
             city_name = (fc.args.get("city_name") or fc.args.get("city") or "").strip()
             if not city_name:
-                # Inject error so the model can reply
                 tool_result = {"error": "No city name provided."}
+            elif fc.name == "get_weather_forecast":
+                raw_days = fc.args.get("forecast_days", 7)
+                try:
+                    forecast_days = int(raw_days) if raw_days is not None else 7
+                except (TypeError, ValueError):
+                    forecast_days = 7
+                tool_result = get_weather_forecast(city_name, forecast_days=forecast_days)
             else:
                 tool_result = get_live_weather(city_name)
 

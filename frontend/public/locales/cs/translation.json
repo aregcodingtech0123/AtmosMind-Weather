@@ -123,7 +123,9 @@
     "thinking": "Přemýšlím...",
     "placeholder": "Zeptejte se na počasí...",
     "send": "Odeslat",
-    "errorFallback": "Omlouváme se, nepodařilo se získat odpověď. Zkuste to prosím znovu."
+    "errorFallback": "Omlouváme se, nepodařilo se získat odpověď. Zkuste to prosím znovu.",
+    "tooltipWear": "Co si mám dnes obléknout?",
+    "tooltipRainTomorrow": "Bude zítra pršet?"
   },
   "footer": {
     "brandTagline": "Chytrá platforma počasí poháněná umělou inteligencí.",

@@ -123,7 +123,9 @@
     "thinking": "Mă gândesc...",
     "placeholder": "Întreabă ceva despre vreme...",
     "send": "Trimite",
-    "errorFallback": "Ups, nu am putut obține un răspuns. Te rog să încerci din nou."
+    "errorFallback": "Ups, nu am putut obține un răspuns. Te rog să încerci din nou.",
+    "tooltipWear": "Ce să port azi?",
+    "tooltipRainTomorrow": "Va ploua mâine?"
   },
   "footer": {
     "brandTagline": "Platformă meteo inteligentă bazată på AI.",

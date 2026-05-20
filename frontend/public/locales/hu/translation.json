@@ -123,7 +123,9 @@
     "thinking": "Gondolkodom...",
     "placeholder": "Kérdezzen az időjárásról...",
     "send": "Küldés",
-    "errorFallback": "Elnézést, nem sikerült választ kapni. Kérjük, próbálja újra."
+    "errorFallback": "Elnézést, nem sikerült választ kapni. Kérjük, próbálja újra.",
+    "tooltipWear": "Mit vegyek fel ma?",
+    "tooltipRainTomorrow": "Holnap esni fog?"
   },
   "footer": {
     "brandTagline": "MI-vezérelt intelligens időjárási platform.",

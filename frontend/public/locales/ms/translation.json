@@ -1,4 +1,3 @@
-
 {
   "navbar": {
     "languageLabel": "Bahasa",
@@ -124,7 +123,9 @@
     "thinking": "Sedang berfikir...",
     "placeholder": "Tanya tentang cuaca...",
     "send": "Hantar",
-    "errorFallback": "Maaf, tidak dapat memperoleh jawapan. Sila cuba lagi."
+    "errorFallback": "Maaf, tidak dapat memperoleh jawapan. Sila cuba lagi.",
+    "tooltipWear": "Apa yang patut saya pakai hari ini?",
+    "tooltipRainTomorrow": "Adakah hujan esok?"
   },
   "footer": {
     "brandTagline": "Platform cuaca pintar yang dikuasakan oleh AI.",

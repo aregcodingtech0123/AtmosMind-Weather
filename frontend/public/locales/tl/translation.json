@@ -1,4 +1,3 @@
-
 {
   "navbar": {
     "languageLabel": "Wika",
@@ -124,7 +123,9 @@
     "thinking": "Nag-iisip...",
     "placeholder": "Magtanong tungkol sa panahon...",
     "send": "Ipadala",
-    "errorFallback": "Paumanhin, hindi makuha ang sagot. Pakisubukang muli."
+    "errorFallback": "Paumanhin, hindi makuha ang sagot. Pakisubukang muli.",
+    "tooltipWear": "Ano ang dapat kong suotin ngayon?",
+    "tooltipRainTomorrow": "Uulan ba bukas?"
   },
   "footer": {
     "brandTagline": "Matalinong platform ng panahon na pinapagana ng AI.",

@@ -1,10 +1,38 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bot, X, Send } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  motion,
+  AnimatePresence,
+  useAnimation,
+  useReducedMotion,
+  type Variants,
+} from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../context/SettingsContext';
 import { apiUrl } from '../services/api';
+import { MarkdownMessage } from './MarkdownMessage';
+
+const TOOLTIP_MOUNT_DELAY_MS = 2000;
+const TOOLTIP_VISIBLE_MS = 4000;
+const TOOLTIP_FADE_MS = 450;
+
+const CHAT_TOOLTIP_KEYS = ['chat.tooltipWear', 'chat.tooltipRainTomorrow'] as const;
+
+/** GPU-friendly translateY keyframes — 3 attention bounces, then rest. */
+const LAUNCHER_BOUNCE_VARIANTS: Variants = {
+  rest: { y: 0, scale: 1 },
+  bounce: {
+    y: [0, -12, 0, -8, 0, -4, 0],
+    transition: {
+      duration: 0.9,
+      ease: [0.22, 1, 0.36, 1],
+      times: [0, 0.17, 0.33, 0.5, 0.66, 0.83, 1],
+    },
+  },
+};
+
+type TooltipPhase = 'idle' | 'visible' | 'exit' | 'done';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -12,14 +40,62 @@ interface Message {
 }
 
 export const FloatingChatbot: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentLanguage, currentUnit } = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [tooltipPhase, setTooltipPhase] = useState<TooltipPhase>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tooltipPlayedRef = useRef(false);
+  const launcherControls = useAnimation();
+  const reduceMotion = useReducedMotion();
+
+  const tooltipVariantIndex = useMemo(
+    () => Math.floor(Math.random() * CHAT_TOOLTIP_KEYS.length),
+    []
+  );
+
+  const tooltipMessage = useMemo(() => {
+    const key = CHAT_TOOLTIP_KEYS[tooltipVariantIndex % CHAT_TOOLTIP_KEYS.length];
+    return t(key);
+  }, [t, i18n.language, tooltipVariantIndex]);
+
+  const showTooltip = tooltipPhase === 'visible' || tooltipPhase === 'exit';
+
+  useEffect(() => {
+    if (isOpen) {
+      setTooltipPhase('done');
+      tooltipPlayedRef.current = true;
+      return;
+    }
+    if (tooltipPlayedRef.current) return;
+
+    let hideTimer: ReturnType<typeof setTimeout>;
+    let doneTimer: ReturnType<typeof setTimeout>;
+
+    const showTimer = setTimeout(() => {
+      setTooltipPhase('visible');
+      if (!reduceMotion) {
+        void launcherControls.start('bounce').then(() => launcherControls.start('rest'));
+      }
+      hideTimer = setTimeout(() => {
+        setTooltipPhase('exit');
+        doneTimer = setTimeout(() => {
+          setTooltipPhase('done');
+          tooltipPlayedRef.current = true;
+        }, TOOLTIP_FADE_MS);
+      }, TOOLTIP_VISIBLE_MS);
+    }, TOOLTIP_MOUNT_DELAY_MS);
+
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+      clearTimeout(doneTimer);
+    };
+  }, [isOpen, launcherControls, reduceMotion]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +155,7 @@ export const FloatingChatbot: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end max-w-[calc(100vw-1rem)]">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -136,7 +212,11 @@ export const FloatingChatbot: React.FC = () => {
                       : 'mr-auto bg-white/10 text-white/90'
                   )}
                 >
-                  {msg.content}
+                  {msg.role === 'assistant' ? (
+                    <MarkdownMessage content={msg.content} />
+                  ) : (
+                    msg.content
+                  )}
                 </div>
               ))}
               {loading && (
@@ -180,19 +260,94 @@ export const FloatingChatbot: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <button
-        type="button"
-        onClick={() => setIsOpen((o) => !o)}
-        className={cn(
-          'flex items-center justify-center w-14 h-14 rounded-full',
-          'bg-cyan-500/90 hover:bg-cyan-400 text-white shadow-lg',
-          'hover:scale-105 hover:shadow-xl active:scale-100',
-          'transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-transparent'
-        )}
-        aria-label={String(isOpen ? t('chat.close') : t('chat.open'))}
-      >
-        <Bot className="w-7 h-7" strokeWidth={1.5} />
-      </button>
+      <div className="flex flex-col-reverse items-end gap-2 sm:flex-row-reverse sm:items-center sm:gap-3">
+        <motion.button
+          type="button"
+          initial="rest"
+          animate={launcherControls}
+          variants={LAUNCHER_BOUNCE_VARIANTS}
+          whileHover={reduceMotion ? undefined : { scale: 1.04 }}
+          whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+          onClick={() => {
+            setTooltipPhase('done');
+            tooltipPlayedRef.current = true;
+            void launcherControls.start('rest');
+            setIsOpen((o) => !o);
+          }}
+          style={{ willChange: 'transform' }}
+          className={cn(
+            'shrink-0 relative isolate',
+            'inline-flex items-center justify-center rounded-full',
+            'touch-manipulation select-none',
+            /* Mobile: 64px thumb-zone touch target */
+            'size-16 min-h-[64px] min-w-[64px]',
+            /* Desktop: 56px balanced footprint (48–56px range) */
+            'md:size-14 md:min-h-[56px] md:min-w-[56px]',
+            'bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-white',
+            'transform-gpu',
+            /* Layered elevation — reads on dark glass UI */
+            'shadow-[0_6px_20px_rgba(0,0,0,0.45),0_2px_8px_rgba(6,182,212,0.35)]',
+            'ring-1 ring-inset ring-white/25',
+            'md:shadow-[0_8px_28px_rgba(0,0,0,0.5),0_4px_12px_rgba(6,182,212,0.3)]',
+            'hover:shadow-[0_10px_32px_rgba(0,0,0,0.55),0_6px_16px_rgba(34,211,238,0.4)]',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300',
+            'focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950'
+          )}
+          aria-label={String(isOpen ? t('chat.close') : t('chat.open'))}
+          aria-describedby={showTooltip ? 'chat-launcher-tooltip' : undefined}
+        >
+          <Bot
+            className="size-8 md:size-7 shrink-0 pointer-events-none"
+            strokeWidth={1.5}
+            aria-hidden
+          />
+        </motion.button>
+
+        <AnimatePresence>
+          {showTooltip && (
+            <motion.div
+              id="chat-launcher-tooltip"
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: 6, scale: 0.92 }}
+              animate={
+                tooltipPhase === 'visible'
+                  ? { opacity: 1, y: 0, scale: 1 }
+                  : { opacity: 0, y: 4, scale: 0.88 }
+              }
+              exit={{ opacity: 0, y: 4, scale: 0.88 }}
+              transition={{
+                duration: tooltipPhase === 'exit' ? TOOLTIP_FADE_MS / 1000 : 0.35,
+                ease: 'easeOut',
+              }}
+              className={cn(
+                'pointer-events-none relative',
+                'max-w-[min(16rem,calc(100vw-5rem))] sm:max-w-[14rem] md:max-w-[14rem]',
+                'rounded-2xl px-3.5 py-2.5',
+                'bg-slate-900/95 text-white backdrop-blur-xl',
+                'border border-cyan-400/25 shadow-lg shadow-cyan-500/15',
+                'text-xs sm:text-sm font-medium leading-snug'
+              )}
+            >
+              <p className="pr-0.5">{tooltipMessage}</p>
+              <span
+                className={cn(
+                  'absolute block h-0 w-0 border-[7px] border-transparent',
+                  'bottom-[-13px] right-6 border-t-slate-900/95 md:hidden'
+                )}
+                aria-hidden
+              />
+              <span
+                className={cn(
+                  'absolute hidden sm:block h-0 w-0 border-[7px] border-transparent',
+                  'right-[-13px] top-1/2 -translate-y-1/2 border-l-slate-900/95'
+                )}
+                aria-hidden
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

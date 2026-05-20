@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import emailjs from '@emailjs/browser';
 import { cn } from '../utils/cn';
+import { isSafeHref } from '../utils/sanitize';
 import { Navbar } from '../components/Navbar';
 import { Seo } from '../components/Seo';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +30,7 @@ export default function Contact() {
     () => ADMIN_CONTACT_MAIL || 'support@atmosmindweather.com',
     []
   );
+  const mailtoHref = `mailto:${contactEmail}`;
 
   const breadcrumbSchema = {
     '@type': 'BreadcrumbList',
@@ -140,12 +142,16 @@ export default function Contact() {
               <p className="text-sm text-white/70 leading-7">
                 {t('contact.emailBody')}
               </p>
-              <a
-                href={`mailto:${contactEmail}`}
-                className="mt-3 inline-flex text-sm font-medium text-cyan-200 hover:text-cyan-100 transition-colors"
-              >
-                {contactEmail}
-              </a>
+              {isSafeHref(mailtoHref) ? (
+                <a
+                  href={mailtoHref}
+                  className="mt-3 inline-flex text-sm font-medium text-cyan-200 hover:text-cyan-100 transition-colors"
+                >
+                  {contactEmail}
+                </a>
+              ) : (
+                <span className="mt-3 inline-flex text-sm text-white/70">{contactEmail}</span>
+              )}
             </section>
 
             <section className="lg:col-span-3 rounded-2xl border border-white/10 bg-black/20 p-5">

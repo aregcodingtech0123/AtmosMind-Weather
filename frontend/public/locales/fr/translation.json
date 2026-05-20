@@ -123,7 +123,9 @@
     "thinking": "Réflexion...",
     "placeholder": "Posez une question sur la météo...",
     "send": "Envoyer",
-    "errorFallback": "Désolé, je n'ai pas pu obtenir de réponse. Veuillez réessayer."
+    "errorFallback": "Désolé, je n'ai pas pu obtenir de réponse. Veuillez réessayer.",
+    "tooltipWear": "Que dois-je porter aujourd'hui ?",
+    "tooltipRainTomorrow": "Est-ce qu'il pleuvra demain ?"
   },
   "messages": {
     "failedToLoadAiWeather": "Échec du chargement de la météo IA",

@@ -123,7 +123,9 @@
     "thinking": "Đang suy nghĩ...",
     "placeholder": "Đặt câu hỏi về thời tiết...",
     "send": "Gửi",
-    "errorFallback": "Rất tiếc, không thể nhận phản hồi. Vui lòng thử lại."
+    "errorFallback": "Rất tiếc, không thể nhận phản hồi. Vui lòng thử lại.",
+    "tooltipWear": "Hôm nay tôi nên mặc gì?",
+    "tooltipRainTomorrow": "Ngày mai có mưa không?"
   },
   "footer": {
     "brandTagline": "Nền tảng thời tiết thông minh hỗ trợ bởi AI.",

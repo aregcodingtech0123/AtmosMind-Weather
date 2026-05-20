@@ -94,7 +94,9 @@
     "thinking": "Düşünüyor...",
     "placeholder": "Hava durumu hakkında sorun...",
     "send": "Gönder",
-    "errorFallback": "Maalesef yanıt alamadım. Lütfen tekrar deneyin."
+    "errorFallback": "Maalesef yanıt alamadım. Lütfen tekrar deneyin.",
+    "tooltipWear": "Bugün ne giymeliyim?",
+    "tooltipRainTomorrow": "Yarın yağmur yağacak mı?"
   },
   "messages": {
     "failedToLoadAiWeather": "Yapay zeka hava durumu yüklenemedi",

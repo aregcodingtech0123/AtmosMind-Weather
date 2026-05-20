@@ -123,7 +123,9 @@
     "thinking": "Düşünürəm...",
     "placeholder": "Hava haqqında soruşun...",
     "send": "Göndər",
-    "errorFallback": "Üzr istəyirik, cavab alınmadı. Zəhmət olmasa yenidən cəhd edin."
+    "errorFallback": "Üzr istəyirik, cavab alınmadı. Zəhmət olmasa yenidən cəhd edin.",
+    "tooltipWear": "Bu gün nə geyinim?",
+    "tooltipRainTomorrow": "Sabah yağış olacaq?"
   },
   "footer": {
     "brandTagline": "Süni intellektlə çalışan ağıllı hava platforması.",

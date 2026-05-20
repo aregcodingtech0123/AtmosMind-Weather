@@ -5,6 +5,8 @@ import google.generativeai as genai
 import requests
 import json
 
+from city_name_normalize import city_name_geocode_variants
+
 # ────────────────────────────────────────────────
 # 1. AYARLAR
 # ────────────────────────────────────────────────
@@ -30,26 +32,13 @@ def geocode_city(display_name: str) -> dict | None:
     query = str(display_name).strip().split(",")[0].strip()
     if not query:
         return None
-    try:
-        geo_url = (
-            "https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={requests.utils.quote(query)}&count=1&language=en&format=json"
-        )
-        geo_resp = requests.get(geo_url, timeout=10)
-        geo_resp.raise_for_status()
-        geo_data = geo_resp.json()
-    except Exception:
-        return None
-    results = geo_data.get("results") if isinstance(geo_data, dict) else None
-    if not results or len(results) == 0:
-        return None
-    first = results[0]
-    try:
-        lat = float(first.get("latitude"))
-        lon = float(first.get("longitude"))
-        return {"latitude": lat, "longitude": lon}
-    except (TypeError, ValueError):
-        return None
+    variants = city_name_geocode_variants(query)
+    for v in variants:
+        for lang in ("en", "tr"):
+            hit = _open_meteo_geocode_first(v, language=lang)
+            if hit is not None:
+                return {"latitude": hit["lat"], "longitude": hit["lon"]}
+    return None
 
 
 # WMO weather code → short condition string (Open-Meteo uses WMO codes)
@@ -85,46 +74,98 @@ def _weather_code_to_condition(code: int) -> str:
     return wmo.get(int(code), "Unknown")
 
 
-def get_live_weather(city_name: str):
+def _open_meteo_geocode_first(query: str, language: str = "en") -> dict | None:
     """
-    Fetches current weather for a city using Open-Meteo (geocoding + forecast).
-    No API key required. Returns same shape as before for compatibility.
+    Return {"lat", "lon", "city"} for the top geocoding hit, or None.
     """
-    if not city_name or not str(city_name).strip():
-        return {"error": "City name is required."}
-
-    city_name = str(city_name).strip()
-
-    # 1. Geocoding: city name → latitude, longitude
+    if not query or not str(query).strip():
+        return None
+    q = str(query).strip()
     try:
         geo_url = (
             "https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={requests.utils.quote(city_name)}&count=1&language=en&format=json"
+            f"?name={requests.utils.quote(q)}&count=1&language={language}&format=json"
         )
         geo_resp = requests.get(geo_url, timeout=10)
         geo_resp.raise_for_status()
         geo_data = geo_resp.json()
-    except requests.RequestException as e:
-        return {"error": f"Geocoding failed: could not resolve city '{city_name}'. Please check the name and try again."}
-    except Exception as e:
-        logger.exception("Geocoding unexpected error for %r: %s", city_name, e)
-        return {"error": GENERIC_ERROR}
-
+    except Exception:
+        return None
     results = geo_data.get("results") if isinstance(geo_data, dict) else None
-    if not results or len(results) == 0:
-        return {"error": f"No location found for '{city_name}'. Try a different spelling or a more specific name."}
-
+    if not results:
+        return None
     first = results[0]
     try:
         lat = float(first.get("latitude"))
         lon = float(first.get("longitude"))
     except (TypeError, ValueError):
-        return {"error": "Geocoding returned invalid coordinates."}
-
-    # Optional: use resolved name from API
-    resolved_name = first.get("name") or city_name
+        return None
+    resolved_name = first.get("name") or q
     if isinstance(first.get("admin1"), str):
         resolved_name = f"{resolved_name}, {first['admin1']}"
+    return {"lat": lat, "lon": lon, "city": resolved_name}
+
+
+def _resolve_city_location(city_name: str) -> dict:
+    """
+    Geocode a city name to coordinates and a display label.
+    Tries normalized variants (handles Turkish suffixes / apostrophe forms) and
+    multiple API languages before failing.
+    Returns {"lat", "lon", "city"} or {"error": "...", "hint": "...", ...}.
+    """
+    if not city_name or not str(city_name).strip():
+        return {"error": "City name is required."}
+
+    raw_input = str(city_name).strip()
+    variants = city_name_geocode_variants(raw_input)
+    if not variants:
+        return {"error": "City name is required."}
+
+    languages = ("en", "tr")
+    attempts_log: list[str] = []
+
+    for v in variants:
+        for lang in languages:
+            attempts_log.append(f"{v!r} (lang={lang})")
+            hit = _open_meteo_geocode_first(v, language=lang)
+            if hit is not None:
+                if v != raw_input or lang != "en":
+                    logger.debug(
+                        "Geocode resolved %r → %r via query=%r lang=%s",
+                        raw_input,
+                        hit.get("city"),
+                        v,
+                        lang,
+                    )
+                return hit
+
+    logger.info("Geocode failed for %r after tries: %s", raw_input, attempts_log[:12])
+    return {
+        "error": (
+            f"No location found for '{raw_input}'. "
+            "Try the city name without grammar endings (e.g. Kopenhag or Copenhagen), or add the country."
+        ),
+        "original_city_argument": raw_input,
+        "hint": (
+            "The name may include a grammatical suffix (e.g. Turkish -'a/-e) or local spelling. "
+            "Ask the user to confirm the standard city name in Latin script, or retry with a shorter base form."
+        ),
+        "geocode_attempts": attempts_log[:16],
+    }
+
+
+def get_live_weather(city_name: str):
+    """
+    Fetches current weather for a city using Open-Meteo (geocoding + forecast).
+    No API key required. Returns same shape as before for compatibility.
+    """
+    location = _resolve_city_location(city_name)
+    if "error" in location:
+        return location
+
+    lat = location["lat"]
+    lon = location["lon"]
+    resolved_name = location["city"]
 
     # 2. Forecast: current weather at lat, lon
     try:
@@ -187,6 +228,113 @@ def get_live_weather(city_name: str):
             "local_time": local_time_24,
         }
         return weather_info
+    except (TypeError, ValueError) as e:
+        logger.exception("Forecast parse error for %r: %s", resolved_name, e)
+        return {"error": GENERIC_ERROR}
+
+
+def get_weather_forecast(city_name: str, forecast_days: int = 7) -> dict:
+    """
+    Fetches current conditions plus daily and hourly forecast for a city.
+    Used by the chat assistant for future-date questions.
+    """
+    location = _resolve_city_location(city_name)
+    if "error" in location:
+        return location
+
+    lat = location["lat"]
+    lon = location["lon"]
+    resolved_name = location["city"]
+    days = max(1, min(int(forecast_days or 7), 16))
+
+    try:
+        forecast_url = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current_weather=true"
+            "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
+            "&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m"
+            f"&forecast_days={days}"
+            "&timezone=auto"
+        )
+        fc_resp = requests.get(forecast_url, timeout=10)
+        fc_resp.raise_for_status()
+        fc_data = fc_resp.json()
+    except requests.RequestException:
+        return {"error": f"Weather API failed: could not fetch forecast for {resolved_name}. Please try again later."}
+    except Exception as e:
+        logger.exception("Forecast fetch error for %r: %s", resolved_name, e)
+        return {"error": GENERIC_ERROR}
+
+    if not isinstance(fc_data, dict):
+        return {"error": "Forecast API returned invalid data."}
+
+    current_weather = fc_data.get("current_weather") or {}
+    current = fc_data.get("current") or {}
+    daily = fc_data.get("daily") or {}
+    hourly = fc_data.get("hourly") or {}
+
+    try:
+        current_block = None
+        if current_weather:
+            temperature = current_weather.get("temperature")
+            if temperature is not None:
+                temperature = round(float(temperature), 1)
+            wind_speed = current_weather.get("windspeed")
+            if wind_speed is not None:
+                wind_speed = round(float(wind_speed), 1)
+            weather_code = current_weather.get("weathercode")
+            humidity = current.get("relative_humidity_2m")
+            if humidity is not None:
+                humidity = int(float(humidity))
+            current_block = {
+                "temperature": temperature,
+                "condition": _weather_code_to_condition(weather_code),
+                "humidity": humidity,
+                "wind_kmh": wind_speed,
+                "observed_at": current_weather.get("time"),
+            }
+
+        daily_forecast = []
+        dates = daily.get("time") or []
+        for i, date_str in enumerate(dates):
+            code = (daily.get("weather_code") or [None])[i]
+            t_max = (daily.get("temperature_2m_max") or [None])[i]
+            t_min = (daily.get("temperature_2m_min") or [None])[i]
+            precip = (daily.get("precipitation_sum") or [None])[i]
+            wind_max = (daily.get("wind_speed_10m_max") or [None])[i]
+            daily_forecast.append({
+                "date": date_str,
+                "temp_max_c": round(float(t_max), 1) if t_max is not None else None,
+                "temp_min_c": round(float(t_min), 1) if t_min is not None else None,
+                "condition": _weather_code_to_condition(code),
+                "precipitation_mm": round(float(precip), 1) if precip is not None else None,
+                "wind_max_kmh": round(float(wind_max), 1) if wind_max is not None else None,
+            })
+
+        hourly_forecast = []
+        hourly_times = hourly.get("time") or []
+        for i, time_str in enumerate(hourly_times[:48]):
+            code = (hourly.get("weather_code") or [None])[i]
+            temp = (hourly.get("temperature_2m") or [None])[i]
+            precip_prob = (hourly.get("precipitation_probability") or [None])[i]
+            wind = (hourly.get("wind_speed_10m") or [None])[i]
+            hourly_forecast.append({
+                "time": time_str,
+                "temperature_c": round(float(temp), 1) if temp is not None else None,
+                "condition": _weather_code_to_condition(code),
+                "precipitation_probability_pct": int(precip_prob) if precip_prob is not None else None,
+                "wind_kmh": round(float(wind), 1) if wind is not None else None,
+            })
+
+        return {
+            "city": resolved_name,
+            "timezone": fc_data.get("timezone"),
+            "current": current_block,
+            "daily": daily_forecast,
+            "hourly": hourly_forecast,
+        }
     except (TypeError, ValueError) as e:
         logger.exception("Forecast parse error for %r: %s", resolved_name, e)
         return {"error": GENERIC_ERROR}

@@ -123,7 +123,9 @@
     "thinking": "Thinking...",
     "placeholder": "Ask about weather...",
     "send": "Send",
-    "errorFallback": "Sorry, I could not get a response. Please try again."
+    "errorFallback": "Sorry, I could not get a response. Please try again.",
+    "tooltipWear": "What should I wear today?",
+    "tooltipRainTomorrow": "Will it rain tomorrow?"
   },
   "messages": {
     "failedToLoadAiWeather": "Failed to load AI weather",

@@ -123,7 +123,9 @@
     "thinking": "Pensando...",
     "placeholder": "Pregunta sobre el clima...",
     "send": "Enviar",
-    "errorFallback": "Lo siento, no pude obtener una respuesta. Por favor, inténtalo de nuevo."
+    "errorFallback": "Lo siento, no pude obtener una respuesta. Por favor, inténtalo de nuevo.",
+    "tooltipWear": "¿Qué debería ponerme hoy?",
+    "tooltipRainTomorrow": "¿Lloverá mañana?"
   },
   "messages": {
     "failedToLoadAiWeather": "Error al cargar el clima por IA",

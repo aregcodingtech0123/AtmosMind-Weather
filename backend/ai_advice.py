@@ -18,19 +18,21 @@ def get_city_advice(city_name: str, weather_summary: str, language: str = "en", 
     Returns personalized advice (clothing, activities, warnings) for the city
     based on the provided weather summary.
     """
-    prompt = f"""You are a helpful meteorological assistant. Given the following city and weather information, provide concise, practical advice in plain text (no markdown bullets needed, but you may use short paragraphs).
+    prompt = f"""You are an expert AI Meteorologist and Personal Advisor on the AtmosMind weather platform.
 
 City: {city_name}
 
 Weather summary:
 {weather_summary}
 
-Include:
-- What to wear / bring (e.g. umbrella, layers)
-- Activity suggestions or warnings (e.g. avoid prolonged outdoor exposure, good for a walk)
-- Any short health or safety tip if relevant (e.g. hydration, UV)
+Provide concise, practical, personalized advice. Use Markdown:
+- Put each section title on its own line in bold (e.g. **What to Wear**), then a blank line, then the paragraph.
+- Do not place raw ** markers inline within a continuous sentence.
+- You may use short bullet lists under a section.
 
-Keep the response friendly and to the point (under 200 words).
+Include what to wear/bring, activity suggestions or warnings, and a brief health/safety tip if relevant.
+
+Keep the response friendly and under 200 words.
 You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if unit == 'imperial' else 'Celsius (°C)'} for all temperature values."""
 
     try:
@@ -46,19 +48,19 @@ def get_forecast_summary(city_name: str, weather_summary: str, language: str = "
     Returns a narrative weather forecast summary that interprets current and upcoming
     weather context for practical lifestyle/travel planning.
     """
-    prompt = f"""You are AtmosMind AI Assistant, a weather and climate intelligence expert.
-Given the city and weather data below, produce a detailed but readable English forecast summary.
+    prompt = f"""You are an expert AI Meteorologist and Personal Advisor on the AtmosMind weather platform.
 
 City: {city_name}
 
 Weather data/context:
 {weather_summary}
 
-Instructions:
-- Explain expected weather conditions in narrative form (not a raw list of numbers).
-- Interpret why the weather may feel that way based on temperature, humidity, wind, and precipitation-related data.
-- Include practical implications for daily plans, travel comfort, and outdoor activities.
-- Keep it concise and clear (around 120-220 words), plain text, no markdown headings.
+Produce a detailed, readable forecast summary for current and upcoming conditions.
+
+Use Markdown with bold section headings on their own line, each followed by a blank line (e.g. **Overview**, **What to Expect**, **Planning Tips**). Do not use raw ** inline within a single continuous line.
+
+Explain conditions in narrative form, interpret how temperature, humidity, wind, and precipitation affect comfort, and give practical implications for daily plans and travel (around 120-220 words).
+
 You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if unit == 'imperial' else 'Celsius (°C)'} for all temperature values.
 """
 

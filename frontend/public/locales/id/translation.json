@@ -1,4 +1,3 @@
-
 {
   "navbar": {
     "languageLabel": "Bahasa",
@@ -124,7 +123,9 @@
     "thinking": "Berpikir...",
     "placeholder": "Tanyakan tentang cuaca...",
     "send": "Kirim",
-    "errorFallback": "Maaf, jawaban tidak dapat diperoleh. Silakan coba lagi."
+    "errorFallback": "Maaf, jawaban tidak dapat diperoleh. Silakan coba lagi.",
+    "tooltipWear": "Apa yang harus saya pakai hari ini?",
+    "tooltipRainTomorrow": "Apakah besok akan hujan?"
   },
   "footer": {
     "brandTagline": "Platform cuaca cerdas yang didukung oleh AI.",

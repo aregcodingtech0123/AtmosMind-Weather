@@ -9,6 +9,7 @@ import { WeatherChart } from './components/WeatherChart';
 import { FavoriteCities } from './components/FavoriteCities';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorMessage } from './components/ErrorMessage';
+import { MarkdownMessage } from './components/MarkdownMessage';
 import { CookieConsent } from './components/CookieConsent';
 import { useWeather } from './hooks/useWeather';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -33,6 +34,7 @@ import {
 import './App.css';
 
 import { POPULAR_CITIES, PopularCity } from './data/popularCities';
+import { sanitizeDisplayText } from './utils/sanitize';
 
 /** Dynamically resolves the image path for a given city based on its ID. */
 export function getCityImagePath(cityId: string): string {
@@ -176,7 +178,8 @@ function App() {
       return;
     }
     const cityEncoded = match[1];
-    const cityName = decodeURIComponent(cityEncoded);
+    const cityName = sanitizeDisplayText(decodeURIComponent(cityEncoded), 120);
+    if (!cityName) return;
     setSelectedCity(cityName);
     geocodeCity(cityName.split(',')[0].trim(), currentLanguage, 1)
       .then((results) => {
@@ -428,9 +431,14 @@ function App() {
   const currentPath = location.pathname || '/';
   const decodedCityFromPath = useMemo(() => {
     const match = currentPath.match(/^\/weather\/(.+)$/);
-    return match ? decodeURIComponent(match[1]) : '';
+    if (!match) return '';
+    try {
+      return sanitizeDisplayText(decodeURIComponent(match[1]), 120);
+    } catch {
+      return '';
+    }
   }, [currentPath]);
-  const cityForTitle = (selectedCity || decodedCityFromPath || '').trim();
+  const cityForTitle = sanitizeDisplayText(selectedCity || decodedCityFromPath, 120);
   const seoTitle = cityForTitle
     ? `${cityForTitle} Weather Forecast & AI Advice - AtmosMind`
     : 'AtmosMind';
@@ -779,9 +787,7 @@ function App() {
                     <p className="text-sm text-white/70">{t('sections.generatingForecastSummary')}</p>
                   )}
                   {!forecastSummaryLoading && forecastSummaryText && (
-                    <p className="text-white/90 whitespace-pre-line text-sm leading-relaxed">
-                      {forecastSummaryText}
-                    </p>
+                    <MarkdownMessage content={forecastSummaryText} />
                   )}
                   {!forecastSummaryLoading && !forecastSummaryText && (
                     <p className="text-sm text-white/60">
@@ -809,9 +815,7 @@ function App() {
                     <p className="text-sm text-white/70">{t('sections.gettingAdvice')}</p>
                   )}
                   {!adviceLoading && adviceText && (
-                    <p className="text-white/90 whitespace-pre-line text-sm leading-relaxed">
-                      {adviceText}
-                    </p>
+                    <MarkdownMessage content={adviceText} />
                   )}
                   {!adviceLoading && !adviceText && (
                     <p className="text-sm text-white/60">

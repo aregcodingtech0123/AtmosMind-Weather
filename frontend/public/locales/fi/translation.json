@@ -123,7 +123,9 @@
     "thinking": "Ajattelen...",
     "placeholder": "Kysy säästä...",
     "send": "Lähetä",
-    "errorFallback": "Pahoittelut, vastausta ei saatu. Yritä uudelleen."
+    "errorFallback": "Pahoittelut, vastausta ei saatu. Yritä uudelleen.",
+    "tooltipWear": "Mitä minun kannattaa pitää tänään?",
+    "tooltipRainTomorrow": "Sataako huomenna?"
   },
   "footer": {
     "brandTagline": "Tekoälyllä toimiva älykäs sääalusta.",
