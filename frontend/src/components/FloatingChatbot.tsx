@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Bot, X, Send } from 'lucide-react';
 import { cn } from '../utils/cn';
 import {
@@ -10,8 +10,8 @@ import {
 } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../context/SettingsContext';
-import { apiUrl } from '../services/api';
 import { MarkdownMessage } from './MarkdownMessage';
+import { streamChatReply } from '../utils/chatStream';
 
 const TOOLTIP_MOUNT_DELAY_MS = 2000;
 const TOOLTIP_VISIBLE_MS = 4000;
@@ -37,21 +37,47 @@ type TooltipPhase = 'idle' | 'visible' | 'exit' | 'done';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  streaming?: boolean;
 }
 
-export const FloatingChatbot: React.FC = () => {
+export interface FloatingChatbotProps {
+  cityName?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({
+  cityName = null,
+  latitude = null,
+  longitude = null,
+}) => {
   const { t, i18n } = useTranslation();
   const { currentLanguage, currentUnit } = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<string | null>(null);
   const [tooltipPhase, setTooltipPhase] = useState<TooltipPhase>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const tooltipPlayedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const launcherControls = useAnimation();
   const reduceMotion = useReducedMotion();
+
+  const sessionId = useMemo(() => {
+    const key = 'atmosmind-chat-session';
+    try {
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const created = `web-${crypto.randomUUID()}`;
+      localStorage.setItem(key, created);
+      return created;
+    } catch {
+      return 'web-anonymous';
+    }
+  }, []);
 
   const tooltipVariantIndex = useMemo(
     () => Math.floor(Math.random() * CHAT_TOOLTIP_KEYS.length),
@@ -103,7 +129,7 @@ export const FloatingChatbot: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, streamPhase]);
 
   useEffect(() => {
     if (isOpen) {
@@ -111,48 +137,109 @@ export const FloatingChatbot: React.FC = () => {
     }
   }, [isOpen]);
 
-  const sendMessage = async () => {
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const appendAssistantToken = useCallback((token: string) => {
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === 'assistant' && last.streaming) {
+        next[next.length - 1] = { ...last, content: last.content + token };
+        return next;
+      }
+      next.push({ role: 'assistant', content: token, streaming: true });
+      return next;
+    });
+    setLoading(false);
+  }, []);
+
+  const finalizeAssistantMessage = useCallback(() => {
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === 'assistant') {
+        next[next.length - 1] = { ...last, streaming: false };
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const userMessage: Message = { role: 'user', content: text };
+    const historyForApi = [...messages, userMessage].map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
+    setStreamPhase('started');
+
+    let assistantResponded = false;
+
+    const appendAssistantReply = (content: string) => {
+      assistantResponded = true;
+      setMessages((prev) => [...prev, { role: 'assistant', content }]);
+    };
 
     try {
-      const nextHistory = [...messages, userMessage].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-      const response = await fetch(apiUrl('/api/chat'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept-Charset': 'utf-8' },
-        body: JSON.stringify({ messages: nextHistory, language: currentLanguage, unit: currentUnit }),
-      });
+      await streamChatReply(
+        historyForApi,
+        {
+          language: currentLanguage,
+          unit: currentUnit,
+          sessionId,
+          cityName,
+          latitude,
+          longitude,
+        },
+        {
+          onStatus: (phase) => setStreamPhase(phase),
+          onToken: (token) => {
+            assistantResponded = true;
+            appendAssistantToken(token);
+          },
+          onError: (message) => {
+            appendAssistantReply(message || t('chat.errorFallback'));
+          },
+        },
+        controller.signal
+      );
 
-      if (!response.ok) {
-        throw new Error('Chat request failed');
+      if (assistantResponded) {
+        finalizeAssistantMessage();
       }
-
-      const data: { reply: string } = await response.json();
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: t('chat.errorFallback') },
-      ]);
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        appendAssistantReply(t('chat.errorFallback'));
+      }
     } finally {
       setLoading(false);
+      setStreamPhase(null);
+      abortRef.current = null;
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSendMessage();
     }
   };
+
+  const showThinking = loading && !messages.some((m) => m.streaming);
 
   return (
     <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end max-w-[calc(100vw-1rem)]">
@@ -219,8 +306,12 @@ export const FloatingChatbot: React.FC = () => {
                   )}
                 </div>
               ))}
-              {loading && (
-                <div className="mr-auto rounded-xl px-3 py-2 text-sm bg-white/10 text-white/60">
+              {showThinking && (
+                <div
+                  className="mr-auto rounded-xl px-3 py-2 text-sm bg-white/10 text-white/60 animate-pulse"
+                  role="status"
+                  aria-live="polite"
+                >
                   {t('chat.thinking')}
                 </div>
               )}
@@ -244,7 +335,7 @@ export const FloatingChatbot: React.FC = () => {
               />
               <button
                 type="button"
-                onClick={sendMessage}
+                onClick={handleSendMessage}
                 disabled={loading || !input.trim()}
                 className={cn(
                   'p-2.5 rounded-xl bg-cyan-500/30 hover:bg-cyan-500/50 text-white',
@@ -279,13 +370,10 @@ export const FloatingChatbot: React.FC = () => {
             'shrink-0 relative isolate',
             'inline-flex items-center justify-center rounded-full',
             'touch-manipulation select-none',
-            /* Mobile: 64px thumb-zone touch target */
             'size-16 min-h-[64px] min-w-[64px]',
-            /* Desktop: 56px balanced footprint (48–56px range) */
             'md:size-14 md:min-h-[56px] md:min-w-[56px]',
             'bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 text-white',
             'transform-gpu',
-            /* Layered elevation — reads on dark glass UI */
             'shadow-[0_6px_20px_rgba(0,0,0,0.45),0_2px_8px_rgba(6,182,212,0.35)]',
             'ring-1 ring-inset ring-white/25',
             'md:shadow-[0_8px_28px_rgba(0,0,0,0.5),0_4px_12px_rgba(6,182,212,0.3)]',

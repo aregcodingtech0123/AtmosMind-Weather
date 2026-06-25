@@ -1,18 +1,20 @@
 import os
 from datetime import datetime
 import logging
-import google.generativeai as genai
 import requests
 import json
 
+from google.genai import types
+
 from city_name_normalize import city_name_geocode_variants
+from gemini_client import DEFAULT_GEMINI_MODEL, get_genai_client, schema_dict_to_function_declaration
+from logging_config import log_gemini_error
 
 # ────────────────────────────────────────────────
 # 1. AYARLAR
 # ────────────────────────────────────────────────
-# API Key'ini buraya gir
+# API Key from environment (validated lazily when Gemini is called)
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-genai.configure(api_key=GOOGLE_API_KEY)
 logger = logging.getLogger(__name__)
 
 GENERIC_ERROR = "An unexpected error occurred while processing your request. Please try again later."
@@ -343,46 +345,12 @@ def get_weather_forecast(city_name: str, forecast_days: int = 7) -> dict:
 def get_current_weather_by_coords(lat: float, lon: float) -> dict:
     """
     Fetch current weather for given coordinates using Open-Meteo (no geocoding).
-    Returns dict with temperature, condition, weather_code, or {"error": "..."}.
-    Used by batch endpoint with Redis cache.
+
+    Delegates to the throttled batch client (single coordinate).
     """
-    try:
-        forecast_url = (
-            "https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lon}"
-            "&current_weather=true"
-            "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-        )
-        fc_resp = requests.get(forecast_url, timeout=10)
-        fc_resp.raise_for_status()
-        fc_data = fc_resp.json()
-    except requests.RequestException as e:
-        logger.warning("Forecast request error for coords (%s, %s): %s", lat, lon, e)
-        return {"error": "Unable to fetch weather data at the moment. Please try again later."}
-    except Exception as e:
-        logger.exception("Unexpected forecast error for coords (%s, %s): %s", lat, lon, e)
-        return {"error": GENERIC_ERROR}
+    from open_meteo_client import get_current_weather_by_coords as _fetch_coords
 
-    if not isinstance(fc_data, dict):
-        return {"error": "Invalid forecast data"}
-
-    current_weather = fc_data.get("current_weather")
-    if not current_weather:
-        return {"error": "No current weather"}
-
-    try:
-        temperature = current_weather.get("temperature")
-        if temperature is not None:
-            temperature = round(float(temperature), 1)
-        weather_code = current_weather.get("weathercode")
-        condition = _weather_code_to_condition(weather_code)
-        return {
-            "temperature": temperature,
-            "condition": condition,
-            "weather_code": weather_code,
-        }
-    except (TypeError, ValueError):
-        return {"error": "Failed to parse forecast"}
+    return _fetch_coords(lat, lon)
 
 # ────────────────────────────────────────────────
 # 3. GEMINI TOOL TANIMI
@@ -399,39 +367,59 @@ tools_schema = [{
     }
 }]
 
-model = genai.GenerativeModel(model_name='gemini-2.5-flash', tools=tools_schema)
+_WEATHER_TOOL = types.Tool(
+    function_declarations=[schema_dict_to_function_declaration(tools_schema[0])]
+)
+_WEATHER_TOOL_CONFIG = types.GenerateContentConfig(
+    tools=[_WEATHER_TOOL],
+    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+)
 
 # ────────────────────────────────────────────────
 # 4. ASİSTAN FONKSİYONU
 # ────────────────────────────────────────────────
 def hava_durumu_asistani(soru):
     logger.info("Received AI weather request")
-    messages = [{"role": "user", "parts": [soru]}]
+    contents = [types.Content(role="user", parts=[types.Part(text=soru)])]
 
     try:
-        response = model.generate_content(messages)
-        part = response.candidates[0].content.parts[0]
+        response = get_genai_client().models.generate_content(
+            model=DEFAULT_GEMINI_MODEL,
+            contents=contents,
+            config=_WEATHER_TOOL_CONFIG,
+        )
     except Exception as e:
-        logger.exception("Gemini request failed: %s", e)
+        log_gemini_error("hava_durumu_asistani.generate_content", e)
         return GENERIC_ERROR
 
-    if part.function_call:
-        fc = part.function_call
-        city_name = fc.args.get("city")
-        logger.info("Fetching live weather via tool for city")
-
-        api_data = get_live_weather(city_name)
-        logger.debug("Tool weather payload fetched successfully")
-
-        messages.append(response.candidates[0].content)
-        messages.append({
-            "role": "user",
-            "parts": [{"function_response": {"name": "get_weather_in_city", "response": api_data}}]
-        })
-
-        final_res = model.generate_content(messages)
-        return f"\nGEMINI CEVABI: {final_res.text}"
-
-    else:
+    if not response.function_calls:
         return f"\nGEMINI CEVABI (Toolsuz): {response.text}"
+
+    fc = response.function_calls[0]
+    city_name = fc.args.get("city")
+    logger.info("Fetching live weather via tool for city")
+
+    api_data = get_live_weather(city_name)
+    logger.debug("Tool weather payload fetched successfully")
+
+    if response.candidates and response.candidates[0].content:
+        contents.append(response.candidates[0].content)
+    contents.append(
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_function_response(
+                    name=fc.name,
+                    response=api_data,
+                )
+            ],
+        )
+    )
+
+    final_res = get_genai_client().models.generate_content(
+        model=DEFAULT_GEMINI_MODEL,
+        contents=contents,
+        config=_WEATHER_TOOL_CONFIG,
+    )
+    return f"\nGEMINI CEVABI: {final_res.text}"
 

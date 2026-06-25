@@ -26,6 +26,21 @@ CREATE INDEX IF NOT EXISTS idx_cities_name_lower ON cities(name_lower);
 CREATE INDEX IF NOT EXISTS idx_cities_is_popular ON cities(is_popular);
 """
 
+_LIKE_ESCAPE_CHAR = "\\"
+
+
+def escape_like_pattern(value: str) -> str:
+    """
+    Escape SQLite LIKE metacharacters so user input is matched literally.
+
+    Use with ``LIKE ? ESCAPE '\\'`` — prevents ``%`` / ``_`` wildcard abuse.
+    """
+    return (
+        value.replace(_LIKE_ESCAPE_CHAR, _LIKE_ESCAPE_CHAR + _LIKE_ESCAPE_CHAR)
+        .replace("%", _LIKE_ESCAPE_CHAR + "%")
+        .replace("_", _LIKE_ESCAPE_CHAR + "_")
+    )
+
 
 def get_connection():
     """Return a connection to the SQLite database."""
@@ -75,10 +90,11 @@ def search_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int = 10) -> 
     prefix_clean = prefix.strip().casefold()
     if not prefix_clean:
         return []
-    pattern = f"{prefix_clean}%"
+    pattern = f"{escape_like_pattern(prefix_clean)}%"
     try:
         cur = conn.execute(
-            "SELECT name, country, latitude, longitude FROM cities WHERE name_lower LIKE ? ORDER BY name_lower LIMIT ?",
+            "SELECT name, country, latitude, longitude FROM cities "
+            "WHERE name_lower LIKE ? ESCAPE '\\' ORDER BY name_lower LIMIT ?",
             (pattern, limit),
         )
         return [dict(row) for row in cur.fetchall()]

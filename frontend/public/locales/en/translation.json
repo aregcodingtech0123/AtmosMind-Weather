@@ -86,6 +86,9 @@
     "weatherForecast": "Weather Forecast",
     "getAdvice": "Get Advice"
   },
+  "cityDetail": {
+    "loading": "Loading weather for this city..."
+  },
   "sections": {
     "detailedForecastSummary": "Detailed Weather Forecast Summary",
     "lastUpdated": "Last updated",
@@ -115,6 +118,57 @@
     "now": "Now",
     "temperatureTrend": "Temperature Trend"
   },
+  "lifestyleIndices": {
+    "title": "Lifestyle Quality Indices",
+    "subtitle": "Air, UV, pollen, and visibility insights for your day",
+    "unavailable": "Data temporarily unavailable",
+    "km": "km",
+    "miles": "mi",
+    "aqi": {
+      "title": "Air Quality",
+      "helper": {
+        "good": "Great for outdoor running and open-air activities.",
+        "fair": "Acceptable air quality for most outdoor plans.",
+        "moderate": "Sensitive groups should take it easy outdoors.",
+        "poor": "Limit prolonged outdoor exertion today.",
+        "very_poor": "Avoid strenuous outdoor activity if possible.",
+        "hazardous": "Stay indoors when you can and keep windows closed.",
+        "unknown": "Air quality data is temporarily unavailable."
+      }
+    },
+    "uv": {
+      "title": "UV Index",
+      "helper": {
+        "low": "Low risk — minimal protection needed.",
+        "moderate": "Sunglasses and SPF recommended during midday.",
+        "high": "Seek shade around solar noon; use SPF 30+.",
+        "very_high": "High burn risk — hat, shade, and SPF essential.",
+        "extreme": "Extreme UV — minimize midday sun exposure.",
+        "unknown": "UV data is temporarily unavailable."
+      }
+    },
+    "pollen": {
+      "title": "Pollen Count",
+      "level": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "unknown": "N/A"
+      },
+      "helper": {
+        "low": "Comfortable for most allergy-sensitive people.",
+        "medium": "Allergy sufferers may notice mild symptoms.",
+        "high": "Consider antihistamines and limit outdoor time.",
+        "unknown": "Pollen data is unavailable for this region."
+      }
+    },
+    "visibility": {
+      "title": "Driving & Aviation Visibility",
+      "dewPoint": "Dew point",
+      "helper": "Visibility for road and flight planning; dew point signals fog risk.",
+      "helperUnavailable": "Visibility and dew point data are temporarily unavailable."
+    }
+  },
   "chat": {
     "title": "AtmosMind Assistant",
     "close": "Close chat",
@@ -129,6 +183,11 @@
   },
   "messages": {
     "failedToLoadAiWeather": "Failed to load AI weather",
+    "failedToLoadWeather": "Failed to fetch weather data. Please try again.",
+    "weatherFetchTimeout": "Weather data is taking too long. Please try again.",
+    "cityNotFound": "We could not find that city. Try a different spelling.",
+    "cityResolveFailed": "Could not resolve this city right now. Please try again.",
+    "failedToLoadLifestyleIndices": "Failed to load lifestyle indices. Please try again.",
     "failedToGetForecastSummary": "Failed to get forecast summary",
     "couldNotLoadForecastSummary": "Could not load forecast summary. Please try again.",
     "failedToGetAdvice": "Failed to get advice",

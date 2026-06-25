@@ -57,6 +57,9 @@
     "weatherForecast": "Hava Durumu Tahmini",
     "getAdvice": "Tavsiye Al"
   },
+  "cityDetail": {
+    "loading": "Bu şehir için hava durumu yükleniyor..."
+  },
   "sections": {
     "detailedForecastSummary": "Detaylı Hava Durumu Tahmin Özeti",
     "lastUpdated": "Son güncelleme",
@@ -86,6 +89,57 @@
     "now": "Şimdi",
     "temperatureTrend": "Sıcaklık Trendi"
   },
+  "lifestyleIndices": {
+    "title": "Yaşam Kalitesi Endeksleri",
+    "subtitle": "Gününüz için hava, UV, polen ve görüş mesafesi öngörüleri",
+    "unavailable": "Veri geçici olarak kullanılamıyor",
+    "km": "km",
+    "miles": "mil",
+    "aqi": {
+      "title": "Hava Kalitesi",
+      "helper": {
+        "good": "Açık hava koşuları ve dış mekân aktiviteleri için harika.",
+        "fair": "Çoğu açık hava planı için kabul edilebilir hava kalitesi.",
+        "moderate": "Hassas gruplar dışarıda temponuzu düşürmeli.",
+        "poor": "Uzun süreli dış mekân eforunu bugün sınırlayın.",
+        "very_poor": "Mümkünse yoğun açık hava aktivitesinden kaçının.",
+        "hazardous": "Mümkün olduğunca içeride kalın ve pencereleri kapalı tutun.",
+        "unknown": "Hava kalitesi verisi geçici olarak kullanılamıyor."
+      }
+    },
+    "uv": {
+      "title": "UV İndeksi",
+      "helper": {
+        "low": "Düşük risk — minimum koruma yeterli.",
+        "moderate": "Öğle saatlerinde güneş gözlüğü ve SPF önerilir.",
+        "high": "Öğle civarı gölge arayın; SPF 30+ kullanın.",
+        "very_high": "Yüksek yanma riski — şapka, gölge ve SPF şart.",
+        "extreme": "Aşırı UV — öğle güneşine maruziyeti en aza indirin.",
+        "unknown": "UV verisi geçici olarak kullanılamıyor."
+      }
+    },
+    "pollen": {
+      "title": "Polen Yoğunluğu",
+      "level": {
+        "low": "Düşük",
+        "medium": "Orta",
+        "high": "Yüksek",
+        "unknown": "Yok"
+      },
+      "helper": {
+        "low": "Çoğu alerji hassasiyeti olan kişi için rahat.",
+        "medium": "Alerjisi olanlar hafif belirtiler fark edebilir.",
+        "high": "Antihistaminik düşünün ve dışarıda geçirilen süreyi sınırlayın.",
+        "unknown": "Bu bölge için polen verisi mevcut değil."
+      }
+    },
+    "visibility": {
+      "title": "Sürüş ve Havacılık Görüşü",
+      "dewPoint": "Çiğ noktası",
+      "helper": "Karayolu ve uçuş planlaması için görüş; çiğ noktası sis riskini gösterir.",
+      "helperUnavailable": "Görüş ve çiğ noktası verileri geçici olarak kullanılamıyor."
+    }
+  },
   "chat": {
     "title": "AtmosMind Asistanı",
     "close": "Sohbeti kapat",
@@ -100,6 +154,11 @@
   },
   "messages": {
     "failedToLoadAiWeather": "Yapay zeka hava durumu yüklenemedi",
+    "failedToLoadWeather": "Hava durumu verisi alınamadı. Lütfen tekrar deneyin.",
+    "weatherFetchTimeout": "Hava durumu verisi çok uzun sürdü. Lütfen tekrar deneyin.",
+    "cityNotFound": "Bu şehir bulunamadı. Farklı bir yazım deneyin.",
+    "cityResolveFailed": "Şehir şu an çözümlenemedi. Lütfen tekrar deneyin.",
+    "failedToLoadLifestyleIndices": "Yaşam kalitesi indeksleri yüklenemedi. Lütfen tekrar deneyin.",
     "failedToGetForecastSummary": "Tahmin özeti alınamadı",
     "couldNotLoadForecastSummary": "Tahmin özeti yüklenemedi. Lütfen tekrar deneyin.",
     "failedToGetAdvice": "Tavsiye alınamadı",

@@ -3,15 +3,18 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Seo } from './components/Seo';
 import { CurrentWeatherComponent } from './components/CurrentWeather';
+import { DynamicWeatherBackground } from './components/DynamicWeatherBackground';
+import { LifestyleIndicesGrid } from './components/LifestyleIndicesGrid';
 import { HourlyForecast } from './components/HourlyForecast';
 import { DailyForecast } from './components/DailyForecast';
 import { WeatherChart } from './components/WeatherChart';
 import { FavoriteCities } from './components/FavoriteCities';
 import { LoadingSpinner } from './components/LoadingSpinner';
+import { CityDetailSkeleton } from './components/CityDetailSkeleton';
 import { ErrorMessage } from './components/ErrorMessage';
 import { MarkdownMessage } from './components/MarkdownMessage';
 import { CookieConsent } from './components/CookieConsent';
-import { useWeather } from './hooks/useWeather';
+import { useCityDetail } from './hooks/useCityDetail';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useFavorites } from './hooks/useFavorites';
 
@@ -23,11 +26,11 @@ import { Cloud, CloudRain, Snowflake, Zap, Lightbulb, Sun, Instagram, Facebook, 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { SupportedLanguage, useSettings } from './context/SettingsContext';
-import { fetchWeatherApi } from 'openmeteo';
 import {
   fetchAiWeather as fetchAiWeatherApi,
   fetchCityAdvice,
   fetchForecastSummary,
+  fetchPopularWeatherBatch,
   geocodeCity,
   reverseGeocode,
 } from './services/api';
@@ -35,6 +38,7 @@ import './App.css';
 
 import { POPULAR_CITIES, PopularCity } from './data/popularCities';
 import { sanitizeDisplayText } from './utils/sanitize';
+import { GEOCODE_TIMEOUT_MS, createRequestGuard } from './utils/requestGuard';
 
 /** Dynamically resolves the image path for a given city based on its ID. */
 export function getCityImagePath(cityId: string): string {
@@ -97,8 +101,19 @@ function App() {
   const [popularCitiesWeatherLoading, setPopularCitiesWeatherLoading] = useState(true);
   const [popularCitiesWeatherError, setPopularCitiesWeatherError] = useState(false);
   const [visibleCount, setVisibleCount] = useState(6);
+  const [resolvingCity, setResolvingCity] = useState(false);
+  const [cityResolveError, setCityResolveError] = useState<string | null>(null);
+  const geocodeGuardRef = useRef(createRequestGuard());
 
-  const { weatherData, loading, error, refetch } = useWeather(latitude, longitude, currentLanguage, currentUnit);
+  const {
+    weatherData,
+    lifestyleIndices,
+    loading,
+    error,
+    lifestyleError: lifestyleIndicesError,
+    refetch,
+  } = useCityDetail(latitude, longitude, currentLanguage, currentUnit);
+  const lifestyleIndicesLoading = loading;
   const geolocation = useGeolocation();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
 
@@ -162,6 +177,9 @@ function App() {
   useEffect(() => {
     const pathname = location.pathname;
     if (pathname === '/' || pathname === '') {
+      geocodeGuardRef.current.abort();
+      setResolvingCity(false);
+      setCityResolveError(null);
       setSelectedCity('');
       setLatitude(null);
       setLongitude(null);
@@ -169,29 +187,61 @@ function App() {
     }
     const match = pathname.match(/^\/weather\/(.+)$/);
     if (!match) return;
+
     const state = location.state as { cityName?: string; latitude?: number; longitude?: number } | null;
     if (state?.cityName != null && state?.latitude != null && state?.longitude != null) {
+      geocodeGuardRef.current.abort();
+      setResolvingCity(false);
+      setCityResolveError(null);
       setSelectedCity(state.cityName);
       setLatitude(state.latitude);
       setLongitude(state.longitude);
       fetchAiWeather(state.cityName);
       return;
     }
+
     const cityEncoded = match[1];
     const cityName = sanitizeDisplayText(decodeURIComponent(cityEncoded), 120);
     if (!cityName) return;
+
+    const { requestId, signal } = geocodeGuardRef.current.begin();
     setSelectedCity(cityName);
-    geocodeCity(cityName.split(',')[0].trim(), currentLanguage, 1)
+    setLatitude(null);
+    setLongitude(null);
+    setResolvingCity(true);
+    setCityResolveError(null);
+
+    const timeoutId = window.setTimeout(() => geocodeGuardRef.current.abort(), GEOCODE_TIMEOUT_MS);
+
+    geocodeCity(cityName.split(',')[0].trim(), currentLanguage, 1, { signal })
       .then((results) => {
+        if (!geocodeGuardRef.current.isLatest(requestId) || signal.aborted) return;
         const first = results[0];
         if (first) {
           setLatitude(first.latitude);
           setLongitude(first.longitude);
           fetchAiWeather(cityName);
+        } else {
+          setCityResolveError(String(t('messages.cityNotFound')));
         }
       })
-      .catch(() => { });
-  }, [location.pathname, location.state, fetchAiWeather, currentLanguage]);
+      .catch((err) => {
+        if (!geocodeGuardRef.current.isLatest(requestId) || signal.aborted) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setCityResolveError(String(t('messages.cityResolveFailed')));
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+        if (geocodeGuardRef.current.isLatest(requestId)) {
+          setResolvingCity(false);
+        }
+      });
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      geocodeGuardRef.current.abort();
+    };
+  }, [location.pathname, location.state, fetchAiWeather, currentLanguage, t]);
 
   // Fetch batch weather on mount when on home: city names → temperatures for top-right bubbles
   const fetchPopularBatch = useCallback(async () => {
@@ -214,29 +264,19 @@ function App() {
         }
       }
 
-      const lats = POPULAR_CITIES.map((c) => c.latitude);
-      const lons = POPULAR_CITIES.map((c) => c.longitude);
-
-      const url = 'https://api.open-meteo.com/v1/forecast';
-      const params = {
-        latitude: lats,
-        longitude: lons,
-        temperature_unit: currentUnit === 'imperial' ? 'fahrenheit' : 'celsius',
-        current: ['temperature_2m', 'weather_code'],
-        timezone: 'auto'
-      };
-
-      const responses = await fetchWeatherApi(url, params);
+      const cityNames = POPULAR_CITIES.map((c) => c.defaultName);
+      const batch = await fetchPopularWeatherBatch(cityNames);
       const map: Record<string, PopularCityWeather> = {};
 
-      responses.forEach((response, i) => {
-        const current = response.current()!;
-        const temp = current.variables(0)!.value();
-        const code = current.variables(1)!.value();
-        map[POPULAR_CITIES[i].id] = {
-          temperature: temp,
-          condition: null,
-          weather_code: code
+      POPULAR_CITIES.forEach((city) => {
+        const item =
+          batch.results.find((result) => result.city === city.defaultName) ??
+          batch.results.find((result) => result.city.startsWith(city.names.en));
+        if (!item) return;
+        map[city.id] = {
+          temperature: item.temperature,
+          condition: item.condition,
+          weather_code: item.weather_code,
         };
       });
 
@@ -427,7 +467,14 @@ function App() {
   const popularCities = POPULAR_CITIES;
 
   const hasData = weatherData && selectedCity;
-  const isLoading = loading || geolocation.loading;
+  const isWeatherRoute = /^\/weather\//.test(location.pathname);
+  const isCityDetailLoading =
+    isWeatherRoute &&
+    !error &&
+    !cityResolveError &&
+    (resolvingCity || (Boolean(selectedCity) && latitude === null) || loading);
+  const isLoading = (loading || geolocation.loading) && !isWeatherRoute;
+  const showDynamicBackground = Boolean(hasData && weatherData?.current);
   const currentPath = location.pathname || '/';
   const decodedCityFromPath = useMemo(() => {
     const match = currentPath.match(/^\/weather\/(.+)$/);
@@ -479,12 +526,21 @@ function App() {
   return (
     <div
       className={cn(
-        'min-h-screen transition-all duration-700 ease-in-out',
-        theme.background,
-        theme.textColor
+        'min-h-screen relative overflow-x-hidden transition-all duration-700 ease-in-out',
+        showDynamicBackground
+          ? 'bg-slate-950 text-white'
+          : cn(theme.background, theme.textColor)
       )}
       data-testid="weather-app"
     >
+      {showDynamicBackground && weatherData?.current && (
+        <DynamicWeatherBackground
+          weatherCode={weatherData.current.weatherCode}
+          isNight={isNight}
+        />
+      )}
+
+      <div className="relative z-10">
       <Seo
         title={seoTitle}
         description={seoDescription}
@@ -676,6 +732,28 @@ function App() {
             </motion.div>
           )}
 
+          {isCityDetailLoading && (
+            <motion.div
+              key="city-detail-loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <CityDetailSkeleton />
+            </motion.div>
+          )}
+
+          {cityResolveError && (
+            <motion.div
+              key="city-resolve-error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <ErrorMessage message={cityResolveError} />
+            </motion.div>
+          )}
+
           {isLoading && (
             <motion.div
               key="loading"
@@ -687,7 +765,7 @@ function App() {
             </motion.div>
           )}
 
-          {error && (
+          {error && !isCityDetailLoading && (
             <motion.div
               key="error"
               initial={{ opacity: 0 }}
@@ -709,7 +787,7 @@ function App() {
             </motion.div>
           )}
 
-          {hasData && !isLoading && (
+          {hasData && !isCityDetailLoading && (
             <motion.div
               key="content"
               initial={{ opacity: 0 }}
@@ -726,6 +804,8 @@ function App() {
                   onToggleFavorite={handleToggleFavorite}
                 />
               )}
+
+              
 
               {/* Get Advice button — scrolls to advice section and fetches AI advice */}
               <div className="col-span-12 flex justify-center gap-3 flex-wrap">
@@ -755,7 +835,13 @@ function App() {
                 </button>
               </div>
 
-
+              {isWeatherRoute && latitude != null && longitude != null && (
+                <LifestyleIndicesGrid
+                  data={lifestyleIndices}
+                  loading={lifestyleIndicesLoading}
+                  error={lifestyleIndicesError}
+                />
+              )}
 
               {/* Hourly Forecast */}
               {weatherData.hourly && (
@@ -983,8 +1069,13 @@ function App() {
       </div>
 
       <Suspense fallback={null}>
-        <FloatingChatbot />
+        <FloatingChatbot
+          cityName={selectedCity || null}
+          latitude={latitude}
+          longitude={longitude}
+        />
       </Suspense>
+      </div>
     </div>
   );
 }

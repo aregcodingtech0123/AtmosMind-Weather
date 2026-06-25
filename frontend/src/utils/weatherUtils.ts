@@ -1,6 +1,22 @@
 import { WeatherCondition, WeatherTheme, ChartDataPoint } from '../types/weather';
 import { TemperatureUnit } from '../context/SettingsContext';
 
+/** Structural theme for `DynamicWeatherBackground` (WMO-driven). */
+export type WmoBackgroundTheme = 'clear' | 'rainy' | 'stormy' | 'snowy' | 'cloudy';
+
+/**
+ * Map Open-Meteo WMO weather codes to interactive background theme states.
+ * Order matters: storms and snow are checked before rain bands.
+ */
+export function resolveWmoBackgroundTheme(code: number, isNight: boolean = false): WmoBackgroundTheme {
+  if (code >= 95 && code <= 99) return 'stormy';
+  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return 'snowy';
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rainy';
+  if (code === 2 || code === 3 || (code >= 45 && code <= 48)) return 'cloudy';
+  if (code === 0 || code === 1) return 'clear';
+  return isNight ? 'cloudy' : 'clear';
+}
+
 // Weather code to condition mapping based on Open-Meteo WMO codes
 export const getWeatherCondition = (code: number, isNight: boolean = false): WeatherCondition => {
   if (isNight && code < 3) return 'night';

@@ -2,15 +2,11 @@
 City-specific weather advice using Gemini.
 Input: city name + current/forecast weather summary → personalized advice.
 """
-import os
 import logging
-import google.generativeai as genai
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
+from gemini_client import generate_text
+
 logger = logging.getLogger(__name__)
-
-_advice_model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 def get_city_advice(city_name: str, weather_summary: str, language: str = "en", unit: str = "metric") -> str:
@@ -36,8 +32,7 @@ Keep the response friendly and under 200 words.
 You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if unit == 'imperial' else 'Celsius (°C)'} for all temperature values."""
 
     try:
-        response = _advice_model.generate_content(prompt)
-        return (response.text or "").strip()
+        return generate_text(prompt)
     except Exception as e:
         logger.exception("City advice generation failed: %s", e)
         return "An unexpected error occurred while processing your request. Please try again later."
@@ -65,8 +60,7 @@ You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if un
 """
 
     try:
-        response = _advice_model.generate_content(prompt)
-        return (response.text or "").strip()
+        return generate_text(prompt)
     except Exception as e:
         logger.exception("Forecast summary generation failed: %s", e)
         return "An unexpected error occurred while processing your request. Please try again later."

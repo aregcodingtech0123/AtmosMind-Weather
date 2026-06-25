@@ -4,19 +4,19 @@ get_weather_forecast to fetch live and future data. Conversation history is pres
 tool calls are intercepted and executed by the backend, then results are fed back to
 the LLM for the final Markdown-formatted reply.
 """
-import os
 import re
-import warnings
 import logging
 
-warnings.filterwarnings("ignore", category=FutureWarning, message=".*google.generativeai.*")
-import google.generativeai as genai
+from google.genai import types
 
+from gemini_client import (
+    DEFAULT_GEMINI_MODEL,
+    generate_text,
+    get_genai_client,
+    schema_dict_to_function_declaration,
+)
 from weather_assistant import get_live_weather, get_weather_forecast
 logger = logging.getLogger(__name__)
-
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
 
 DECLINE_MESSAGES = {
     "en": (
@@ -202,8 +202,7 @@ USER_TEXT:
 {text}
 """
     try:
-        response = _moderation_model.generate_content(prompt)
-        detected = _normalize_language((response.text or "").strip())
+        detected = _normalize_language(generate_text(prompt).strip())
         if detected in DECLINE_MESSAGES:
             return detected
     except Exception:
@@ -240,8 +239,7 @@ USER_TEXT:
 {text}
 """
     try:
-        response = _moderation_model.generate_content(prompt)
-        verdict = (response.text or "").strip().upper()
+        verdict = generate_text(prompt).strip().upper()
         return "WEATHER" in verdict
     except Exception:
         # Fail open for intent checks so valid weather questions are not blocked.
@@ -296,13 +294,23 @@ TOOLS_SCHEMA = [
     },
 ]
 
-_chat_model = genai.GenerativeModel(
-    "gemini-2.5-flash",
-    system_instruction=SYSTEM_PROMPT,
-    tools=TOOLS_SCHEMA,
+_CHAT_TOOLS = types.Tool(
+    function_declarations=[schema_dict_to_function_declaration(tool) for tool in TOOLS_SCHEMA]
 )
 
-_moderation_model = genai.GenerativeModel("gemini-2.5-flash")
+_CHAT_CONFIG = types.GenerateContentConfig(
+    tools=[_CHAT_TOOLS],
+    system_instruction=SYSTEM_PROMPT,
+    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+)
+
+
+def _chat_generate(contents: list[types.Content]):
+    return get_genai_client().models.generate_content(
+        model=DEFAULT_GEMINI_MODEL,
+        contents=contents,
+        config=_CHAT_CONFIG,
+    )
 
 
 def _is_offensive_any_language_ai(text: str) -> bool:
@@ -328,8 +336,7 @@ USER_TEXT:
 {text}
 """
     try:
-        response = _moderation_model.generate_content(prompt)
-        verdict = (response.text or "").strip().upper()
+        verdict = generate_text(prompt).strip().upper()
         return "BLOCK" in verdict
     except Exception:
         # Fail closed for safety-critical moderation layer.
@@ -357,61 +364,68 @@ def chat(messages: list[dict], language: str = "en", unit: str = "metric") -> st
         return _get_decline_message(prompt_language)
 
     try:
-        # Build conversation contents for the API (user/model turns only; no tool turns yet)
-        contents = [{
-            "role": "user",
-            "parts": [
-                (
-                    "You are a multi-lingual assistant. You must respond in the same language currently selected by the user in the UI. "
-                    "If the UI is set to 'Español', your responses must be in Spanish. If '한국어', respond in Korean. "
-                    f"The active language detected for this session is '{prompt_language}'. "
-                    f"Use {'Fahrenheit (°F)' if unit == 'imperial' else 'Celsius (°C)'} for temperatures by default "
-                    "to stay consistent with the user's global unit setting, unless the user explicitly requests "
-                    "a different unit in their latest message."
-                )
-            ],
-        }]
+        contents: list[types.Content] = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part(
+                        text=(
+                            "You are a multi-lingual assistant. You must respond in the same language currently selected by the user in the UI. "
+                            "If the UI is set to 'Español', your responses must be in Spanish. If '한국어', respond in Korean. "
+                            f"The active language detected for this session is '{prompt_language}'. "
+                            f"Use {'Fahrenheit (°F)' if unit == 'imperial' else 'Celsius (°C)'} for temperatures by default "
+                            "to stay consistent with the user's global unit setting, unless the user explicitly requests "
+                            "a different unit in their latest message."
+                        )
+                    )
+                ],
+            )
+        ]
         for m in messages:
             role = "user" if m.get("role") == "user" else "model"
-            contents.append({"role": role, "parts": [m.get("content", "")]})
+            contents.append(
+                types.Content(role=role, parts=[types.Part(text=m.get("content", ""))])
+            )
 
         max_tool_rounds = 5
         response = None
 
         for _ in range(max_tool_rounds):
-            response = _chat_model.generate_content(contents)
-            if not response.candidates or not response.candidates[0].content.parts:
-                break
-
-            part = response.candidates[0].content.parts[0]
-
-            # Check for function call
-            if not hasattr(part, "function_call") or part.function_call is None:
+            response = _chat_generate(contents)
+            if not response.function_calls:
                 return (response.text or "").strip()
 
-            fc = part.function_call
-            if fc.name not in ("get_current_weather", "get_weather_forecast"):
-                break
+            if response.candidates and response.candidates[0].content:
+                contents.append(response.candidates[0].content)
 
-            city_name = (fc.args.get("city_name") or fc.args.get("city") or "").strip()
-            if not city_name:
-                tool_result = {"error": "No city name provided."}
-            elif fc.name == "get_weather_forecast":
-                raw_days = fc.args.get("forecast_days", 7)
-                try:
-                    forecast_days = int(raw_days) if raw_days is not None else 7
-                except (TypeError, ValueError):
-                    forecast_days = 7
-                tool_result = get_weather_forecast(city_name, forecast_days=forecast_days)
-            else:
-                tool_result = get_live_weather(city_name)
+            for fc in response.function_calls:
+                if fc.name not in ("get_current_weather", "get_weather_forecast"):
+                    continue
 
-            # Append model message (with function_call) and function response to contents
-            contents.append(response.candidates[0].content)
-            contents.append({
-                "role": "user",
-                "parts": [{"function_response": {"name": fc.name, "response": tool_result}}],
-            })
+                city_name = (fc.args.get("city_name") or fc.args.get("city") or "").strip()
+                if not city_name:
+                    tool_result = {"error": "No city name provided."}
+                elif fc.name == "get_weather_forecast":
+                    raw_days = fc.args.get("forecast_days", 7)
+                    try:
+                        forecast_days = int(raw_days) if raw_days is not None else 7
+                    except (TypeError, ValueError):
+                        forecast_days = 7
+                    tool_result = get_weather_forecast(city_name, forecast_days=forecast_days)
+                else:
+                    tool_result = get_live_weather(city_name)
+
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_function_response(
+                                name=fc.name,
+                                response=tool_result,
+                            )
+                        ],
+                    )
+                )
 
         return (response.text or "").strip() if response else "Sorry, something went wrong."
     except Exception as e:

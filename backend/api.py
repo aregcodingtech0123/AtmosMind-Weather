@@ -1,29 +1,30 @@
+from logging_config import setup_logging
+
+setup_logging()
+
 import json
 import logging
 import os
+import socket
 import threading
-import warnings
 import requests
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 from contextlib import asynccontextmanager
-from collections import defaultdict, deque
-
-warnings.filterwarnings("ignore", category=FutureWarning, message=".*google.generativeai.*")
 
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from weather_assistant import hava_durumu_asistani, get_live_weather, get_current_weather_by_coords, geocode_city
+from open_meteo_client import get_current_weather_batch_by_coords
 # city_autocomplete_ai (Gemini-based) is no longer used for autocomplete.
 # Autocomplete is now served by the Redis→SQLite tiered strategy below.
 from ai_advice import get_city_advice, get_forecast_summary
-from ai_chat import chat as ai_chat
+from langchain_agent import AtmosMindAgent, create_atmosmind_agent
 
 from database import get_connection, init_schema, fetch_popular_for_redis, search_by_prefix, get_coordinates_by_display_name
 from redis_cache import (
@@ -34,38 +35,27 @@ from redis_cache import (
     get_cached_weather_by_city,
     set_cached_weather_by_city,
 )
+from security import (
+    RATE_LIMIT_MAX_REQUESTS,
+    RATE_LIMIT_WINDOW_SECONDS,
+    enforce_rate_limit,
+    evaluate_chat_input_safety,
+    get_allowed_origins,
+    get_client_ip,
+)
+from lifestyle_indices import LifestyleIndicesResponse, fetch_lifestyle_indices
+from weather_detail import ForecastUnavailableError, WeatherDetailResponse, fetch_weather_detail
+from observability import configure_langsmith_tracing, langsmith_tracing_active
+from logging_config import log_redis_event
 
 logger = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "An unexpected error occurred while processing your request. Please try again later."
 
-# Simple in-memory per-IP rate limiting for abuse prevention.
-RATE_LIMIT_WINDOW_SECONDS = 60
-RATE_LIMIT_MAX_REQUESTS = 8
-_rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
-_rate_limit_lock = threading.Lock()
-
-
-def _get_client_ip(request: Request) -> str:
-    xff = request.headers.get("x-forwarded-for", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _enforce_rate_limit(request: Request, endpoint_key: str) -> None:
-    client_ip = _get_client_ip(request)
-    key = f"{endpoint_key}:{client_ip}"
-    now = time.time()
-    with _rate_limit_lock:
-        bucket = _rate_limit_store[key]
-        while bucket and now - bucket[0] > RATE_LIMIT_WINDOW_SECONDS:
-            bucket.popleft()
-        if len(bucket) >= RATE_LIMIT_MAX_REQUESTS:
-            raise HTTPException(
-                status_code=429,
-                detail="Too many requests. Please wait a minute and try again.",
-            )
-        bucket.append(now)
+EXTERNAL_API_HOSTS = (
+    "generativelanguage.googleapis.com",
+    "api.open-meteo.com",
+    "geocoding-api.open-meteo.com",
+)
 
 # Optional Redis client (None if Redis unavailable)
 _redis_client = None
@@ -82,39 +72,81 @@ def _get_redis():
         _redis_client.ping()
         return _redis_client
     except Exception as e:
-        logger.warning("Redis not available: %s. City search will use SQLite only.", e)
+        log_redis_event(
+            "connect_failed",
+            component="api._get_redis",
+            fallback="sqlite_autocomplete",
+            error=str(e),
+        )
         return None
 
 
 def _prewarm_weather_cache(popular: list[dict]) -> None:
     """
-    Background task: pre-warm Redis weather cache for the top 1000 popular cities.
-    Runs once at startup so the first user request for any popular city is an
-    instant cache hit. Uses a thread pool to parallelize Open-Meteo calls.
-    Cities whose weather is already cached are skipped (TTL still alive).
+    Background task: pre-warm Redis weather cache for popular cities.
+
+    Uses chunked Open-Meteo *batch* requests (not parallel per-city calls) to avoid 429s.
     """
     r = _get_redis()
     if not r or not popular:
         return
 
-    def _warm_one(city: dict) -> None:
+    prewarm_limit = max(0, int(os.getenv("PREWARM_CITIES_LIMIT", "80")))
+    if prewarm_limit == 0:
+        logger.info("Weather cache pre-warm disabled (PREWARM_CITIES_LIMIT=0).")
+        return
+
+    candidates = popular[:prewarm_limit]
+    misses: list[tuple[dict, float, float]] = []
+    for city in candidates:
         try:
             lat = float(city["latitude"])
             lon = float(city["longitude"])
-            # Skip if already in cache (previous startup or recent batch request)
-            if get_cached_weather(r, lat, lon) is not None:
-                return
-            data = get_current_weather_by_coords(lat, lon)
-            if "error" not in data:
-                set_cached_weather(r, lat, lon, data, ttl=900)  # 15-min TTL
-        except Exception as exc:
-            logger.debug("Pre-warm failed for %s: %s", city.get("name"), exc)
+            if get_cached_weather(r, lat, lon) is None:
+                misses.append((city, lat, lon))
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.debug("Pre-warm skip invalid city row %s: %s", city, exc)
 
-    logger.info("Pre-warming weather cache for %d popular cities…", len(popular))
-    # 20 workers: fast enough, polite to Open-Meteo
-    with ThreadPoolExecutor(max_workers=20) as pool:
-        pool.map(_warm_one, popular)
-    logger.info("Weather cache pre-warm complete.")
+    if not misses:
+        logger.info("Weather cache pre-warm: all %d candidates already cached.", len(candidates))
+        return
+
+    logger.info(
+        "Pre-warming weather cache for %d cities (%d cache misses, chunked batch API)…",
+        len(candidates),
+        len(misses),
+    )
+    coords = [(lat, lon) for _city, lat, lon in misses]
+    batch_results = get_current_weather_batch_by_coords(coords)
+
+    warmed = 0
+    for (city, lat, lon), data in zip(misses, batch_results):
+        if "error" in data:
+            logger.debug("Pre-warm miss for %s: %s", city.get("name"), data.get("error"))
+            continue
+        payload = {
+            "temperature": data.get("temperature"),
+            "condition": data.get("condition"),
+            "weather_code": data.get("weather_code"),
+        }
+        set_cached_weather(r, lat, lon, payload, ttl=900)
+        warmed += 1
+
+    logger.info("Weather cache pre-warm complete (%d/%d stored).", warmed, len(misses))
+
+
+async def _warmup_external_dns() -> None:
+    """Resolve external API hostnames at startup to prime Docker's DNS cache."""
+    loop = asyncio.get_running_loop()
+
+    async def _resolve(host: str) -> None:
+        try:
+            await loop.run_in_executor(None, socket.getaddrinfo, host, 443)
+            logger.info("DNS warmup OK: %s", host)
+        except OSError as exc:
+            logger.warning("DNS warmup failed for %s: %s", host, exc)
+
+    await asyncio.gather(*(_resolve(host) for host in EXTERNAL_API_HOSTS))
 
 
 @asynccontextmanager
@@ -133,6 +165,13 @@ async def lifespan(app: FastAPI):
         conn.close()
     except Exception as e:
         logger.exception("Startup: failed to init DB or Redis cache: %s", e)
+
+    try:
+        await _warmup_external_dns()
+    except Exception as e:
+        logger.warning("Startup: external DNS warmup failed: %s", e)
+
+    configure_langsmith_tracing()
 
     # Fire-and-forget: pre-warm weather for popular cities in the background
     # so the main server starts instantly and the cache fills up concurrently.
@@ -154,7 +193,15 @@ async def lifespan(app: FastAPI):
         _redis_client = None
 
 
-app = FastAPI(lifespan=lifespan)
+def _is_production_env() -> bool:
+    return os.getenv("ENV", "").strip().casefold() == "production"
+
+
+_fastapi_kwargs: dict = {"lifespan": lifespan}
+if _is_production_env():
+    _fastapi_kwargs.update(docs_url=None, redoc_url=None, openapi_url=None)
+
+app = FastAPI(**_fastapi_kwargs)
 
 # Mirror frontend security headers when the API is exposed directly (non-Vercel).
 _SECURITY_HEADERS = {
@@ -177,11 +224,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS: wildcard origin requires allow_credentials=False (browser + Starlette rules).
-# Allows any Vercel preview/production origin without maintaining a static list.
+# CORS: explicit allowlist via ALLOWED_ORIGINS (comma-separated).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -205,8 +251,8 @@ class WeatherResponse(BaseModel):
 
 
 @app.post("/api/ai-weather", response_model=WeatherResponse)
-def ai_weather(req: WeatherRequest, request: Request):
-    _enforce_rate_limit(request, "ai-weather")
+async def ai_weather(req: WeatherRequest, request: Request):
+    await enforce_rate_limit(request, "ai-weather", _get_redis())
     question = (
         f"Lütfen '{req.city}' şehri için güncel hava durumunu getir. "
         f"get_weather_in_city aracını kullan ve kısa, anlaşılır yanıt ver. "
@@ -350,7 +396,7 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
     if len(suggestions_ordered) < MIN_SUGGESTIONS:
         try:
             r = _get_redis()
-            if r:
+            if r is not None:
                 redis_hits = search_redis(r, prefix, limit=MAX_SUGGESTIONS)
                 for s in redis_hits:
                     try:
@@ -374,16 +420,21 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
                             "population": s.get("population", 0) or 0,
                         })
         except Exception as exc:
-            logger.warning("Redis autocomplete failed for %r: %s", prefix, exc)
+            log_redis_event(
+                "operation_failed",
+                component="autocomplete.search_redis",
+                fallback="sqlite",
+                error=str(exc),
+            )
 
     # ── Tier 2: SQLite fallback ───────────────────────────────────────────────
     if len(suggestions_ordered) < MIN_SUGGESTIONS:
+        conn = None
         try:
             conn = get_connection()
             sqlite_rows = search_by_prefix(
                 conn, prefix, limit=MAX_SUGGESTIONS - len(suggestions_ordered)
             )
-            conn.close()
             for row in sqlite_rows:
                 lat = float(row["latitude"])
                 lon = float(row["longitude"])
@@ -400,7 +451,13 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
                         "population": row.get("population", 0) or 0,
                     })
         except Exception as exc:
-            logger.exception("SQLite autocomplete failed for prefix %r: %s", prefix, exc)
+            logger.warning("SQLite autocomplete failed for prefix %r: %s", prefix, exc)
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     # ── Tier 3: Open-Meteo external fallback ──────────────────────────────────
     if len(suggestions_ordered) < MIN_SUGGESTIONS:
@@ -455,13 +512,16 @@ def _tiered_search(prefix: str, language: str = "en") -> list[dict]:
 
 
 @app.post("/api/autocomplete")
-def autocomplete(req: AutocompleteRequest):
+async def autocomplete(req: AutocompleteRequest, request: Request):
     """
     Fast, LLM-free autocomplete.
     Tier 1: Redis ZRANGEBYLEX on the top-1000 cities index (sub-ms).
     Tier 2: SQLite indexed LIKE fallback for full coverage.
+    Tier 3: Open-Meteo geocoding fallback when local tiers are insufficient.
     Returns a raw JSON bytes response to minimise serialisation overhead.
+    Never raises HTTP 500 — degrades to an empty suggestion list on failure.
     """
+    await enforce_rate_limit(request, "autocomplete", _get_redis())
     q = req.query.strip()
     if len(q) < MIN_QUERY_LEN:
         return Response(
@@ -469,7 +529,12 @@ def autocomplete(req: AutocompleteRequest):
             media_type="application/json",
         )
 
-    results = _tiered_search(q, req.language)
+    try:
+        results = _tiered_search(q, req.language)
+    except Exception as exc:
+        logger.exception("Autocomplete failed for query %r: %s", q, exc)
+        results = []
+
     payload = json.dumps({"suggestions": results}, ensure_ascii=False)
     return Response(content=payload, media_type="application/json")
 
@@ -478,9 +543,21 @@ def autocomplete(req: AutocompleteRequest):
 def search_city(q: str = "", lang: str = "en"):
     """
     GET alias of the same tiered search — kept for backwards compatibility.
+    Never raises HTTP 500 — degrades to an empty suggestion list on failure.
     """
     prefix = (q or "").strip()
-    results = _tiered_search(prefix, lang)
+    if len(prefix) < MIN_QUERY_LEN:
+        return Response(
+            content='{"suggestions":[]}',
+            media_type="application/json",
+        )
+
+    try:
+        results = _tiered_search(prefix, lang)
+    except Exception as exc:
+        logger.exception("search-city failed for query %r: %s", prefix, exc)
+        results = []
+
     payload = json.dumps({"suggestions": results}, ensure_ascii=False)
     return Response(content=payload, media_type="application/json")
 
@@ -498,8 +575,8 @@ class GetCityAdviceResponse(BaseModel):
 
 
 @app.post("/api/get-city-advice", response_model=GetCityAdviceResponse)
-def get_city_advice_endpoint(req: GetCityAdviceRequest, request: Request):
-    _enforce_rate_limit(request, "get-city-advice")
+async def get_city_advice_endpoint(req: GetCityAdviceRequest, request: Request):
+    await enforce_rate_limit(request, "get-city-advice", _get_redis())
     advice = get_city_advice(req.city, req.weather_summary, req.language, req.unit)
     return GetCityAdviceResponse(advice=advice)
 
@@ -516,8 +593,8 @@ class GetForecastSummaryResponse(BaseModel):
 
 
 @app.post("/api/get-forecast-summary", response_model=GetForecastSummaryResponse)
-def get_forecast_summary_endpoint(req: GetForecastSummaryRequest, request: Request):
-    _enforce_rate_limit(request, "get-forecast-summary")
+async def get_forecast_summary_endpoint(req: GetForecastSummaryRequest, request: Request):
+    await enforce_rate_limit(request, "get-forecast-summary", _get_redis())
     summary = get_forecast_summary(req.city, req.weather_summary, req.language, req.unit)
     return GetForecastSummaryResponse(summary=summary)
 
@@ -540,18 +617,134 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=40)
     language: str = Field(default="en", min_length=2, max_length=8)
     unit: str = Field(default="metric", min_length=2, max_length=16)
+    session_id: str | None = Field(default=None, max_length=128)
+    city_name: str | None = Field(default=None, max_length=120)
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
 
 
 class ChatResponse(BaseModel):
     reply: str
 
 
-@app.post("/api/chat", response_model=ChatResponse)
-def chat_endpoint(req: ChatRequest, request: Request):
-    _enforce_rate_limit(request, "chat")
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
-    reply = ai_chat(messages, req.language, req.unit)
-    return ChatResponse(reply=reply)
+_atmosmind_agent: AtmosMindAgent | None = None
+
+AGENT_ERROR_REPLY_TR = (
+    "Hava durumu asistanı şu an yanıt veremiyor. Lütfen birkaç saniye sonra tekrar deneyin."
+)
+AGENT_ERROR_REPLY_EN = (
+    "The weather assistant cannot respond right now. Please try again in a moment."
+)
+AGENT_NETWORK_ERROR_REPLY_TR = (
+    "Hava durumu asistanına bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
+)
+AGENT_NETWORK_ERROR_REPLY_EN = (
+    "Could not reach the weather assistant. Check your internet connection and try again."
+)
+
+
+def _is_network_error(exc: Exception) -> bool:
+    msg = str(exc).casefold()
+    network_markers = (
+        "name resolution",
+        "clientconnectordnserror",
+        "temporary failure",
+        "connect timeout",
+        "connection refused",
+        "network is unreachable",
+        "nodename nor servname",
+        "failed to resolve",
+    )
+    return any(marker in msg for marker in network_markers)
+
+
+def _agent_error_reply(language: str, exc: Exception | None = None) -> str:
+    code = (language or "en").strip().casefold().split("-")[0]
+    is_tr = code == "tr"
+    if exc is not None and _is_network_error(exc):
+        return AGENT_NETWORK_ERROR_REPLY_TR if is_tr else AGENT_NETWORK_ERROR_REPLY_EN
+    return AGENT_ERROR_REPLY_TR if is_tr else AGENT_ERROR_REPLY_EN
+
+
+def get_atmosmind_agent() -> AtmosMindAgent:
+    """Lazy singleton for the LangChain weather agent."""
+    global _atmosmind_agent
+    if _atmosmind_agent is None:
+        configure_langsmith_tracing()
+        _atmosmind_agent = create_atmosmind_agent()
+    return _atmosmind_agent
+
+
+def _format_sse(payload: dict[str, str] | str) -> str:
+    if isinstance(payload, str):
+        return f"data: {payload}\n\n"
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _sse_error_chunk(language: str, exc: Exception | None = None) -> str:
+    """Unified SSE error frame — always includes top-level ``error`` for the React parser."""
+    message = _agent_error_reply(language, exc)
+    return _format_sse({"error": message, "type": "error", "reply": message})
+
+
+async def chat_sse_generator(req: ChatRequest, session_id: str):
+    """
+    Single SSE generator for /api/chat — success tokens and failures share one stream.
+
+    Always terminates with ``data: [DONE]`` so the frontend never hangs waiting.
+    """
+    yield _format_sse({"type": "status", "phase": "started"})
+    user_input = req.messages[-1].content
+    session_hint = f"{session_id[:8]}…" if len(session_id) > 8 else session_id
+    logger.info(
+        "Chat SSE stream started session_hint=%s language=%s langsmith_tracing=%s",
+        session_hint,
+        req.language,
+        langsmith_tracing_active(),
+    )
+
+    safety = await evaluate_chat_input_safety(user_input, req.language)
+    if not safety.allowed:
+        if safety.message:
+            yield _format_sse({"type": "token", "content": safety.message})
+        yield _format_sse("[DONE]")
+        return
+
+    try:
+        agent = get_atmosmind_agent()
+        yield _format_sse({"type": "status", "phase": "agent"})
+        async for token in agent.astream(
+            session_id=session_id,
+            user_input=user_input,
+            language=req.language,
+            unit=req.unit,
+            city_name=req.city_name,
+            latitude=req.latitude,
+            longitude=req.longitude,
+        ):
+            if token:
+                yield _format_sse({"type": "token", "content": token})
+    except Exception as exc:
+        logger.error("Agent Error: %s", str(exc), exc_info=True)
+        yield _sse_error_chunk(req.language, exc)
+    finally:
+        yield _format_sse("[DONE]")
+
+
+@app.post("/api/chat")
+async def chat_endpoint(req: ChatRequest, request: Request):
+    await enforce_rate_limit(request, "chat", _get_redis())
+    session_id = (req.session_id or "").strip() or get_client_ip(request)
+
+    return StreamingResponse(
+        chat_sse_generator(req, session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ─── Batch current weather for popular city cards ─────────────────────────────
@@ -586,6 +779,17 @@ def _resolve_coords(city_display: str):
     if coords:
         return coords["latitude"], coords["longitude"]
     return None
+
+
+def _batch_item_from_payload(city_display: str, data: dict) -> BatchWeatherItem:
+    if "error" in data:
+        return BatchWeatherItem(city=city_display, error=data["error"])
+    return BatchWeatherItem(
+        city=city_display,
+        temperature=data.get("temperature"),
+        condition=data.get("condition"),
+        weather_code=data.get("weather_code"),
+    )
 
 
 def _fetch_one_weather(city_display: str, lat: float, lon: float):
@@ -647,48 +851,121 @@ def _fetch_one_weather_by_name(city_display: str):
 
 
 @app.post("/api/weather/batch", response_model=BatchWeatherResponse)
-def weather_batch(req: BatchWeatherRequest):
+async def weather_batch(req: BatchWeatherRequest, request: Request):
     """
     Fetch current temperature (and condition) for popular city names.
-    CRITICAL: Redis is checked first per city; if e.g. London was fetched 5 min ago, return from cache
-    so the dashboard stays instant. On cache miss, use Open-Meteo (coords from DB or geocode, then
-    get_current_weather_by_coords; fallback get_live_weather). Cache TTL 15 minutes.
-    Returns results array and temperatures map (city name -> °C) for frontend binding.
+
+    Redis is checked first per city. Cache misses are filled with chunked Open-Meteo
+    batch requests (one HTTP call per chunk, not N parallel single-city calls).
     """
+    await enforce_rate_limit(request, "weather-batch", _get_redis())
     cities = [c.strip() for c in (req.cities or []) if c and c.strip()]
     if not cities:
         return BatchWeatherResponse(results=[], temperatures={})
 
-    # Resolve all cities to (lat, lon) or None
-    resolved = []
+    r = _get_redis()
+    results_by_city: dict[str, BatchWeatherItem] = {}
+    to_fetch: list[tuple[str, float, float]] = []
+    name_only: list[str] = []
+
     for city_display in cities:
         coords = _resolve_coords(city_display)
-        if coords is not None:
-            resolved.append((city_display, coords[0], coords[1]))
+        if coords is None:
+            name_only.append(city_display)
+            continue
+
+        lat, lon = coords
+        cached = get_cached_weather(r, lat, lon) if r else None
+        if cached is not None:
+            results_by_city[city_display] = BatchWeatherItem(
+                city=city_display,
+                temperature=cached.get("temperature"),
+                condition=cached.get("condition"),
+                weather_code=cached.get("weather_code"),
+            )
         else:
-            resolved.append((city_display, None, None))
+            to_fetch.append((city_display, lat, lon))
 
-    results = []
-    max_workers = min(10, len(resolved))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_city = {}
-        for city_display, lat, lon in resolved:
-            if lat is not None and lon is not None:
-                future_to_city[executor.submit(_fetch_one_weather, city_display, lat, lon)] = city_display
-            else:
-                future_to_city[executor.submit(_fetch_one_weather_by_name, city_display)] = city_display
+    if to_fetch:
+        coords = [(lat, lon) for _city, lat, lon in to_fetch]
+        batch_data = get_current_weather_batch_by_coords(coords)
+        for (city_display, lat, lon), data in zip(to_fetch, batch_data):
+            if "error" not in data and r:
+                payload = {
+                    "temperature": data.get("temperature"),
+                    "condition": data.get("condition"),
+                    "weather_code": data.get("weather_code"),
+                }
+                set_cached_weather(r, lat, lon, payload, ttl=900)
+            results_by_city[city_display] = _batch_item_from_payload(city_display, data)
 
-        for future in as_completed(future_to_city):
-            try:
-                results.append(future.result())
-            except Exception as e:
-                city_display = future_to_city[future]
-                logger.exception("Batch weather failed for %r: %s", city_display, e)
-                results.append(BatchWeatherItem(city=city_display, error=GENERIC_ERROR_MESSAGE))
+    for city_display in name_only:
+        try:
+            results_by_city[city_display] = _fetch_one_weather_by_name(city_display)
+        except Exception as e:
+            logger.exception("Batch weather failed for %r: %s", city_display, e)
+            results_by_city[city_display] = BatchWeatherItem(
+                city=city_display, error=GENERIC_ERROR_MESSAGE
+            )
 
-    # Preserve order of input cities
-    by_city = {r.city: r for r in results}
-    ordered = [by_city.get(c, BatchWeatherItem(city=c, error="Unknown")) for c in cities]
-    temperatures = {r.city: r.temperature for r in ordered if r.temperature is not None}
+    ordered = [results_by_city.get(c, BatchWeatherItem(city=c, error="Unknown")) for c in cities]
+    temperatures = {item.city: item.temperature for item in ordered if item.temperature is not None}
     return BatchWeatherResponse(results=ordered, temperatures=temperatures)
+
+
+# ─── City detail: unified forecast + lifestyle indices ───────────────────────
+
+
+class WeatherDetailRequest(BaseModel):
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    language: str = Field(default="en", min_length=2, max_length=8)
+    unit: Literal["metric", "imperial"] = "metric"
+
+
+@app.post("/api/weather/detail", response_model=WeatherDetailResponse)
+async def weather_detail_endpoint(req: WeatherDetailRequest, request: Request):
+    """
+    Unified city-detail payload for the frontend.
+
+    Fetches Open-Meteo forecast and lifestyle indices concurrently on the server.
+    The browser must not call Open-Meteo directly.
+    """
+    await enforce_rate_limit(request, "weather-detail", _get_redis())
+    try:
+        return await fetch_weather_detail(
+            req.latitude,
+            req.longitude,
+            language=req.language,
+            unit=req.unit,
+            redis_client=_get_redis(),
+        )
+    except ForecastUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Weather forecast temporarily unavailable.") from exc
+    except Exception as exc:
+        logger.exception(
+            "Weather detail failed for (%s, %s): %s",
+            req.latitude,
+            req.longitude,
+            exc,
+        )
+        raise HTTPException(status_code=503, detail="Weather forecast temporarily unavailable.") from exc
+
+
+# ─── Lifestyle indices (air quality, UV, pollen, visibility, dew point) ───────
+
+
+@app.get("/api/lifestyle-indices", response_model=LifestyleIndicesResponse)
+async def lifestyle_indices_endpoint(
+    request: Request,
+    latitude: float = Query(..., ge=-90.0, le=90.0),
+    longitude: float = Query(..., ge=-180.0, le=180.0),
+):
+    """
+    Dynamic lifestyle indices for the city detail view.
+
+    Fetches Open-Meteo Forecast + Air Quality APIs in parallel for the given coordinates.
+    """
+    await enforce_rate_limit(request, "lifestyle-indices", _get_redis())
+    return await fetch_lifestyle_indices(latitude, longitude, redis_client=_get_redis())
 

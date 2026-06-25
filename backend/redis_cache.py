@@ -168,3 +168,46 @@ def set_cached_weather_by_city(
         redis_client.setex(key, ttl, payload)
     except Exception as e:
         logger.debug("set_cached_weather_by_city failed: %s", e)
+
+
+# ─── Air quality cache (lat/lon → Open-Meteo air-quality JSON) ───
+AIR_QUALITY_KEY_PREFIX = "air_quality:current"
+AIR_QUALITY_TTL_SECONDS = 900  # 15 minutes
+
+
+def _air_quality_cache_key(lat: float, lon: float) -> str:
+    return f"{AIR_QUALITY_KEY_PREFIX}:{round(lat, 2)}:{round(lon, 2)}"
+
+
+def get_cached_air_quality(redis_client, lat: float, lon: float) -> Optional[dict[str, Any]]:
+    """Return cached Open-Meteo air-quality JSON for (lat, lon) or None."""
+    if not redis_client:
+        return None
+    try:
+        key = _air_quality_cache_key(lat, lon)
+        raw = redis_client.get(key)
+        if raw is None:
+            return None
+        data = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.debug("get_cached_air_quality failed: %s", e)
+        return None
+
+
+def set_cached_air_quality(
+    redis_client,
+    lat: float,
+    lon: float,
+    data: dict[str, Any],
+    ttl: int = AIR_QUALITY_TTL_SECONDS,
+) -> None:
+    """Store Open-Meteo air-quality JSON for (lat, lon)."""
+    if not redis_client:
+        return
+    try:
+        key = _air_quality_cache_key(lat, lon)
+        payload = json.dumps(data)
+        redis_client.setex(key, ttl, payload)
+    except Exception as e:
+        logger.debug("set_cached_air_quality failed: %s", e)

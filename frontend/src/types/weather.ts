@@ -58,6 +58,47 @@ export interface AiWeather {
   aiAnswer: string;
 }
 
+export type LifestylePollenLevel = 'low' | 'medium' | 'high' | 'unknown';
+export type LifestyleAqiCategory =
+  | 'good'
+  | 'fair'
+  | 'moderate'
+  | 'poor'
+  | 'very_poor'
+  | 'hazardous'
+  | 'unknown';
+export type LifestyleUvCategory =
+  | 'low'
+  | 'moderate'
+  | 'high'
+  | 'very_high'
+  | 'extreme'
+  | 'unknown';
+
+export interface LifestylePollenMetrics {
+  birch: number | null;
+  grass: number | null;
+  ragweed: number | null;
+  level: LifestylePollenLevel;
+}
+
+export interface LifestyleIndices {
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+  observed_at: string | null;
+  european_aqi: number | null;
+  us_aqi: number | null;
+  aqi_value: number | null;
+  aqi_standard: 'european' | 'us' | 'none';
+  aqi_category: LifestyleAqiCategory;
+  uv_index: number | null;
+  uv_category: LifestyleUvCategory;
+  pollen: LifestylePollenMetrics;
+  visibility_meters: number | null;
+  dew_point_celsius: number | null;
+}
+
 // Weather condition types
 export type WeatherCondition = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'storm' | 'night';
 

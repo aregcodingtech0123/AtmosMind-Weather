@@ -13,12 +13,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN chmod +x /app/entrypoint.sh
 
-# Optional: run as non-root (requires volume to be writable)
-# RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
-# USER appuser
+# Non-root runtime user — /app/data must be writable (volume mount or image layer).
+RUN adduser --disabled-password --gecos "" appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app \
+    && chmod 755 /app \
+    && chmod 775 /app/data
 
 # SQLite DB will be stored in /app/data (mounted volume in compose)
 ENV DATABASE_PATH=/app/data/cities.db
 EXPOSE 8000
+
+USER appuser
 
 ENTRYPOINT ["./entrypoint.sh"]

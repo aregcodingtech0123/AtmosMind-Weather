@@ -7,6 +7,15 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_PATH=/app/data/cities.db
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    dns_opt:
+      - ndots:0
+      - timeout:3
+      - attempts:3
+      - use-vc
     volumes:
       - ./data:/app/data
     depends_on:

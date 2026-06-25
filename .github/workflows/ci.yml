@@ -1,0 +1,141 @@
+# =============================================================================
+# AtmosMind — Continuous Integration (master / main protection)
+# =============================================================================
+#
+# PURPOSE
+#   Run backend (pytest) and frontend (Jest) test suites on every push and PR
+#   targeting the default branch. Both jobs run in parallel for fast feedback.
+#
+# VERCEL DEPLOYMENT GATE (architectural contract)
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │  If EITHER job fails, this workflow exits with a non-zero status code.   │
+#   │  GitHub marks the check run as FAILED.                                  │
+#   │                                                                         │
+#   │  Configure branch protection (Settings → Branches → main/master):         │
+#   │    • Require status check: "CI" (or job names below)                    │
+#   │                                                                         │
+#   │  Configure Vercel (Project → Settings → Git):                           │
+#   │    • Enable "Wait for GitHub Checks" / required checks before deploy     │
+#   │    • Map Preview + Production deploys to this workflow passing          │
+#   │                                                                         │
+#   │  Result: failed pytest OR failed Jest BLOCKS automated Vercel preview   │
+#   │  and production deployments for that commit.                            │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+# JOBS
+#   test-backend  — Python 3.11, Redis service, pytest in backend/
+#   test-frontend — Node.js 20, npm ci, Jest non-interactive in frontend/
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 — Backend: FastAPI + pytest (+ Redis sidecar for integration-ready CI)
+  # ---------------------------------------------------------------------------
+  test-backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      # CI test environment — not production secrets
+      ENV: development
+      LOG_LEVEL: WARNING
+      REDIS_URL: redis://localhost:6379/0
+      DATABASE_PATH: ./data/cities.db
+      GOOGLE_API_KEY: ci-test-google-api-key-placeholder
+      PREWARM_CITIES_LIMIT: "0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Verify Redis connectivity
+        run: |
+          python - <<'PY'
+          import os
+          import redis
+
+          url = os.environ["REDIS_URL"]
+          client = redis.from_url(url, decode_responses=True)
+          assert client.ping() is True
+          print(f"Redis OK at {url}")
+          PY
+
+      - name: Run pytest
+        run: python -m pytest -q --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Job 2 — Frontend: React + Jest (non-interactive)
+  # ---------------------------------------------------------------------------
+  test-frontend:
+    name: Frontend (Jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      CI: true
+      # react-scripts reads NODE_OPTIONS for test runner stability on CI runners
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        # frontend/.npmrc sets legacy-peer-deps=true (honored by npm ci)
+        run: npm ci
+
+      - name: Run Jest tests (non-interactive)
+        run: npm test -- --watchAll=false --passWithNoTests

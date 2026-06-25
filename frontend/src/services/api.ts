@@ -3,6 +3,9 @@
  * Use the API **host only** (e.g. https://api.example.com), not .../api — paths already include /api/...
  * If the env value ends with /api, it is stripped so we never double-prefix (/api/api/...).
  */
+import type { LifestyleIndices } from '../types/weather';
+import type { WeatherDetailApiResponse } from '../utils/weatherDetailMapper';
+
 function normalizeApiBase(raw: string | undefined): string {
   if (raw == null || !String(raw).trim()) return '';
   let base = String(raw).trim().replace(/\/+$/, '');
@@ -12,7 +15,7 @@ function normalizeApiBase(raw: string | undefined): string {
   return base.replace(/\/+$/, '');
 }
 
-export const API_BASE = normalizeApiBase(process.env.REACT_APP_API_URL);
+export const API_BASE = normalizeApiBase(process.env.REACT_APP_API_URL) || '';
 
 if (process.env.NODE_ENV === 'production' && !API_BASE) {
   // eslint-disable-next-line no-console
@@ -57,12 +60,17 @@ export interface GeoSearchResult {
   longitude: number;
 }
 
-export async function geocodeCity(name: string, language: string, count = 1): Promise<GeoSearchResult[]> {
+export async function geocodeCity(
+  name: string,
+  language: string,
+  count = 1,
+  options?: { signal?: AbortSignal }
+): Promise<GeoSearchResult[]> {
   const response = await fetch(
     `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
       name
     )}&count=${count}&language=${encodeURIComponent(language)}&format=json`,
-    { headers: { 'Accept-Charset': 'utf-8' } }
+    { headers: { 'Accept-Charset': 'utf-8' }, signal: options?.signal }
   );
   if (!response.ok) return [];
   const data = (await response.json()) as { results?: GeoSearchResult[] };
@@ -186,4 +194,88 @@ export async function fetchCityAdvice(
     apiUrl('/api/get-city-advice'),
     { city, weather_summary, language, unit }
   );
+}
+
+export interface BatchWeatherItem {
+  city: string;
+  temperature: number | null;
+  condition: string | null;
+  weather_code: number | null;
+  error: string | null;
+}
+
+export interface BatchWeatherResponse {
+  results: BatchWeatherItem[];
+  temperatures: Record<string, number>;
+}
+
+export async function fetchPopularWeatherBatch(
+  cities: string[]
+): Promise<BatchWeatherResponse> {
+  return postJson<BatchWeatherResponse, { cities: string[] }>(
+    apiUrl('/api/weather/batch'),
+    { cities }
+  );
+}
+
+export async function fetchWeatherDetail(
+  latitude: number,
+  longitude: number,
+  language: string,
+  unit: 'metric' | 'imperial',
+  options?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<WeatherDetailApiResponse> {
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 12_000;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  const onExternalAbort = () => controller.abort();
+  options?.signal?.addEventListener('abort', onExternalAbort);
+
+  try {
+    const response = await fetch(apiUrl('/api/weather/detail'), {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ latitude, longitude, language, unit }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Weather detail request failed: ${response.status}`);
+    }
+    return response.json() as Promise<WeatherDetailApiResponse>;
+  } finally {
+    window.clearTimeout(timeoutId);
+    options?.signal?.removeEventListener('abort', onExternalAbort);
+  }
+}
+
+export async function fetchLifestyleIndices(
+  latitude: number,
+  longitude: number,
+  options?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<LifestyleIndices> {
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 5_000;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  const onExternalAbort = () => controller.abort();
+  options?.signal?.addEventListener('abort', onExternalAbort);
+
+  try {
+    const params = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+    });
+    const response = await fetch(apiUrl(`/api/lifestyle-indices?${params.toString()}`), {
+      headers: { Accept: 'application/json', 'Accept-Charset': 'utf-8' },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Lifestyle indices request failed: ${response.status}`);
+    }
+    return response.json() as Promise<LifestyleIndices>;
+  } finally {
+    window.clearTimeout(timeoutId);
+    options?.signal?.removeEventListener('abort', onExternalAbort);
+  }
 }
