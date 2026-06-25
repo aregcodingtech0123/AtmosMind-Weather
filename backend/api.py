@@ -40,7 +40,6 @@ from security import (
     RATE_LIMIT_WINDOW_SECONDS,
     enforce_rate_limit,
     evaluate_chat_input_safety,
-    get_allowed_origins,
     get_client_ip,
 )
 from lifestyle_indices import LifestyleIndicesResponse, fetch_lifestyle_indices
@@ -224,11 +223,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS: explicit allowlist via ALLOWED_ORIGINS (comma-separated).
+# CORS: explicit allowlist via ALLOWED_ORIGINS (comma-separated origins).
+# Example (Render): ALLOWED_ORIGINS=https://atmosmindweather.com,https://www.atmosmindweather.com,http://localhost:3000
+_allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "").strip()
+_cors_allowed_origins = (
+    [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
+    if _allowed_origins_raw
+    else ["http://localhost:3000"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_allowed_origins(),
-    allow_credentials=False,
+    allow_origins=_cors_allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
