@@ -18,7 +18,7 @@ import { useCityDetail } from './hooks/useCityDetail';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useFavorites } from './hooks/useFavorites';
 
-import { FavoriteCity, WeatherCondition, AiWeather } from './types/weather';
+import { FavoriteCity, WeatherCondition } from './types/weather';
 import type { WeatherData } from './types/weather';
 import { formatTemperature, getWeatherCondition, weatherThemes, isNightTime } from './utils/weatherUtils';
 import { cn } from './utils/cn';
@@ -86,10 +86,6 @@ function App() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
-  const [aiWeather, setAiWeather] = useState<AiWeather | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceText, setAdviceText] = useState<string | null>(null);
   const [forecastSummaryLoading, setForecastSummaryLoading] = useState(false);
@@ -134,24 +130,16 @@ function App() {
     setSelectedCity('');
     setLatitude(null);
     setLongitude(null);
-    setAiWeather(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [navigate]);
 
   const fetchAiWeather = useCallback(async (cityName: string) => {
     try {
-      setAiLoading(true);
-      setAiError(null);
-
-      const data = (await fetchAiWeatherApi(cityName, currentLanguage, currentUnit)) as AiWeather;
-      setAiWeather(data);
-    } catch (error: any) {
-      setAiError(error.message || t('messages.failedToLoadAiWeather'));
-      setAiWeather(null);
-    } finally {
-      setAiLoading(false);
+      await fetchAiWeatherApi(cityName, currentLanguage, currentUnit);
+    } catch {
+      // Non-fatal; legacy AI weather prefetch (no dedicated UI surface).
     }
-  }, [currentLanguage, currentUnit, t]);
+  }, [currentLanguage, currentUnit]);
 
   // Handle city search: push URL and sync state so Back/Forward work
   const handleSearch = useCallback(
@@ -204,18 +192,19 @@ function App() {
     const cityName = sanitizeDisplayText(decodeURIComponent(cityEncoded), 120);
     if (!cityName) return;
 
-    const { requestId, signal } = geocodeGuardRef.current.begin();
+    const guard = geocodeGuardRef.current;
+    const { requestId, signal } = guard.begin();
     setSelectedCity(cityName);
     setLatitude(null);
     setLongitude(null);
     setResolvingCity(true);
     setCityResolveError(null);
 
-    const timeoutId = window.setTimeout(() => geocodeGuardRef.current.abort(), GEOCODE_TIMEOUT_MS);
+    const timeoutId = window.setTimeout(() => guard.abort(), GEOCODE_TIMEOUT_MS);
 
     geocodeCity(cityName.split(',')[0].trim(), currentLanguage, 1, { signal })
       .then((results) => {
-        if (!geocodeGuardRef.current.isLatest(requestId) || signal.aborted) return;
+        if (!guard.isLatest(requestId) || signal.aborted) return;
         const first = results[0];
         if (first) {
           setLatitude(first.latitude);
@@ -226,20 +215,20 @@ function App() {
         }
       })
       .catch((err) => {
-        if (!geocodeGuardRef.current.isLatest(requestId) || signal.aborted) return;
+        if (!guard.isLatest(requestId) || signal.aborted) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
         setCityResolveError(String(t('messages.cityResolveFailed')));
       })
       .finally(() => {
         window.clearTimeout(timeoutId);
-        if (geocodeGuardRef.current.isLatest(requestId)) {
+        if (guard.isLatest(requestId)) {
           setResolvingCity(false);
         }
       });
 
     return () => {
       window.clearTimeout(timeoutId);
-      geocodeGuardRef.current.abort();
+      guard.abort();
     };
   }, [location.pathname, location.state, fetchAiWeather, currentLanguage, t]);
 

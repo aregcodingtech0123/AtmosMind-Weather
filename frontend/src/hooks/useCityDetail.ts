@@ -98,9 +98,10 @@ export function useCityDetail(
   }, [latitude, longitude, language, unit, t]);
 
   useEffect(() => {
+    const guard = guardRef.current;
     fetchData();
     return () => {
-      guardRef.current.abort();
+      guard.abort();
     };
   }, [fetchData]);
 

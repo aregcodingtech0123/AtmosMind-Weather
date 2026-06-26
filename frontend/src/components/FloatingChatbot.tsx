@@ -51,7 +51,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({
   latitude = null,
   longitude = null,
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { currentLanguage, currentUnit } = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -87,7 +87,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({
   const tooltipMessage = useMemo(() => {
     const key = CHAT_TOOLTIP_KEYS[tooltipVariantIndex % CHAT_TOOLTIP_KEYS.length];
     return t(key);
-  }, [t, i18n.language, tooltipVariantIndex]);
+  }, [t, tooltipVariantIndex]);
 
   const showTooltip = tooltipPhase === 'visible' || tooltipPhase === 'exit';
 

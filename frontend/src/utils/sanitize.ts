@@ -2,6 +2,8 @@
  * Client-side sanitization helpers (defense in depth with React's default escaping).
  */
 
+// Intentional strip of C0 control chars (eslint no-control-regex)
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const HTML_TAG = /<[^>]*>/g;
 

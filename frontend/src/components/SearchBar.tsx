@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { Search, MapPin, Loader2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -222,11 +222,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ── Resolve city name / handle Enter with no explicit selection ────────────
-  // Prefer already-loaded suggestion[0] so no redundant API call is needed and
-  // the user sees the exact localized label visible in the dropdown.
-  // Fallback: geocode the raw query with the active UI language so multilingual
-  // inputs like "Münih" or "中文" resolve to the correct city.
+  const handleSelect = useCallback((suggestion: Suggestion) => {
+    const baseName = suggestion.name.split(',')[0].trim();
+    setQuery(baseName);
+    setRawSuggestions([]);
+    setIsFocused(false);
+    onSearch(baseName, suggestion.lat, suggestion.lon);
+  }, [onSearch]);
+
+  // Prefer already-loaded suggestion[0]; fallback geocodes multilingual raw query.
   const runSearch = useCallback(async (fullNameOrQuery: string) => {
     if (suggestions.length > 0) {
       handleSelect(suggestions[0]);
@@ -249,21 +253,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     } catch {
       // Non-fatal: geocoding errors don't break the UI
     }
-  }, [suggestions, currentLanguage, onSearch]);
-
-
-  const handleSelect = (suggestion: Suggestion) => {
-    const baseName = suggestion.name.split(',')[0].trim();
-    setQuery(baseName);
-    setRawSuggestions([]);
-    setIsFocused(false);
-    onSearch(baseName, suggestion.lat, suggestion.lon);
-  };
+  }, [suggestions, currentLanguage, onSearch, handleSelect]);
 
   const triggerSearch = useCallback(() => {
     if (suggestions.length > 0) { handleSelect(suggestions[0]); return; }
     if (query.trim()) { runSearch(query.trim()); return; }
-  }, [suggestions, query, runSearch]);
+  }, [suggestions, query, runSearch, handleSelect]);
 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); triggerSearch(); };
 
