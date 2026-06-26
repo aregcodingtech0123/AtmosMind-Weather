@@ -36,7 +36,7 @@ import {
 } from './services/api';
 import './App.css';
 
-import { POPULAR_CITIES, PopularCity } from './data/popularCities';
+import { POPULAR_CITIES } from './data/popularCities';
 import { sanitizeDisplayText } from './utils/sanitize';
 import { GEOCODE_TIMEOUT_MS, createRequestGuard } from './utils/requestGuard';
 
