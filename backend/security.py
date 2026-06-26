@@ -109,21 +109,30 @@ async def enforce_rate_limit(request: Request, endpoint_key: str, redis_client: 
 
     Uses Redis when available; falls back to in-memory storage otherwise.
     """
+    from logging_config import log_redis_event
+
     client_ip = get_client_ip(request)
     redis_key = _rate_limit_redis_key(endpoint_key, client_ip)
 
     if redis_client is not None:
-        await asyncio.to_thread(_enforce_rate_limit_redis, redis_client, redis_key)
-    else:
-        from logging_config import log_redis_event
+        try:
+            await asyncio.to_thread(_enforce_rate_limit_redis, redis_client, redis_key)
+            return
+        except Exception as exc:
+            log_redis_event(
+                "rate_limit_redis_failed",
+                component="security.enforce_rate_limit",
+                fallback="in_memory",
+                error=str(exc),
+            )
 
-        log_redis_event(
-            "rate_limit_fallback",
-            component="security.enforce_rate_limit",
-            fallback="in_memory",
-            level="info",
-        )
-        await asyncio.to_thread(_enforce_rate_limit_memory, redis_key)
+    log_redis_event(
+        "rate_limit_fallback",
+        component="security.enforce_rate_limit",
+        fallback="in_memory",
+        level="info",
+    )
+    await asyncio.to_thread(_enforce_rate_limit_memory, redis_key)
 
 
 def clear_memory_rate_limits() -> None:

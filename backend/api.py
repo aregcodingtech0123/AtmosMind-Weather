@@ -241,6 +241,21 @@ app.add_middleware(
 )
 
 
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "redis": _get_redis() is not None}
+
+
 class WeatherRequest(BaseModel):
     city: str = Field(..., min_length=1, max_length=120)
     language: str = Field(default="en", min_length=2, max_length=8)
