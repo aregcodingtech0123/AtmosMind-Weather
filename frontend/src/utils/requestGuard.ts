@@ -23,7 +23,7 @@ export function createRequestGuard() {
 }
 
 export const WEATHER_FETCH_TIMEOUT_MS = 8_000;
-export const CITY_DETAIL_FETCH_TIMEOUT_MS = 12_000;
+export const CITY_DETAIL_FETCH_TIMEOUT_MS = 45_000;
 export const LIFESTYLE_FETCH_TIMEOUT_MS = 5_000;
 export const GEOCODE_TIMEOUT_MS = 6_000;
 

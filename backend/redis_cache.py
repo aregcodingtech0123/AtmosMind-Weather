@@ -170,6 +170,58 @@ def set_cached_weather_by_city(
         logger.debug("set_cached_weather_by_city failed: %s", e)
 
 
+# ─── City detail cache (lat/lon + language + unit → WeatherDetailResponse JSON) ───
+WEATHER_DETAIL_KEY_PREFIX = "weather:detail"
+WEATHER_DETAIL_TTL_SECONDS = 900  # 15 minutes
+
+
+def _weather_detail_cache_key(lat: float, lon: float, language: str, unit: str) -> str:
+    lang = (language or "en").split("-")[0].casefold()[:8]
+    unit_key = (unit or "metric").casefold()
+    return f"{WEATHER_DETAIL_KEY_PREFIX}:{round(lat, 2)}:{round(lon, 2)}:{lang}:{unit_key}"
+
+
+def get_cached_weather_detail(
+    redis_client,
+    lat: float,
+    lon: float,
+    language: str,
+    unit: str,
+) -> Optional[dict[str, Any]]:
+    """Return cached city-detail payload dict or None."""
+    if not redis_client:
+        return None
+    try:
+        key = _weather_detail_cache_key(lat, lon, language, unit)
+        raw = redis_client.get(key)
+        if raw is None:
+            return None
+        data = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.debug("get_cached_weather_detail failed: %s", e)
+        return None
+
+
+def set_cached_weather_detail(
+    redis_client,
+    lat: float,
+    lon: float,
+    language: str,
+    unit: str,
+    data: dict[str, Any],
+    ttl: int = WEATHER_DETAIL_TTL_SECONDS,
+) -> None:
+    """Store city-detail payload for (lat, lon, language, unit)."""
+    if not redis_client:
+        return
+    try:
+        key = _weather_detail_cache_key(lat, lon, language, unit)
+        redis_client.setex(key, ttl, json.dumps(data))
+    except Exception as e:
+        logger.debug("set_cached_weather_detail failed: %s", e)
+
+
 # ─── Air quality cache (lat/lon → Open-Meteo air-quality JSON) ───
 AIR_QUALITY_KEY_PREFIX = "air_quality:current"
 AIR_QUALITY_TTL_SECONDS = 900  # 15 minutes

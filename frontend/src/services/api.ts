@@ -226,7 +226,7 @@ export async function fetchWeatherDetail(
   options?: { signal?: AbortSignal; timeoutMs?: number }
 ): Promise<WeatherDetailApiResponse> {
   const controller = new AbortController();
-  const timeoutMs = options?.timeoutMs ?? 12_000;
+  const timeoutMs = options?.timeoutMs ?? 45_000;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   const onExternalAbort = () => controller.abort();

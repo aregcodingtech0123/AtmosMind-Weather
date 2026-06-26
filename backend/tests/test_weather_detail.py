@@ -1,14 +1,57 @@
 """Tests for unified weather detail service."""
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from lifestyle_indices import LifestyleIndicesResponse
 from weather_detail import ForecastUnavailableError, fetch_weather_detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_weather_detail_uses_redis_cache():
+    cached_payload = {
+        "latitude": 41.0,
+        "longitude": 29.0,
+        "weather": {
+            "current": {
+                "temperature": 20.0,
+                "weather_code": 1,
+                "humidity": 50.0,
+                "wind_speed": 10.0,
+                "feels_like": 19.0,
+            },
+            "hourly": {
+                "time": ["2025-06-24T12:00"],
+                "temperature_2m": [20.0],
+                "weather_code": [1],
+                "relative_humidity_2m": [50.0],
+                "wind_speed_10m": [10.0],
+            },
+            "daily": None,
+        },
+        "lifestyle_indices": {
+            "latitude": 41.0,
+            "longitude": 29.0,
+            "aqi_standard": "none",
+            "aqi_category": "unknown",
+            "uv_category": "unknown",
+            "pollen": {"level": "unknown"},
+        },
+    }
+    redis = MagicMock()
+    with patch(
+        "weather_detail.get_cached_weather_detail",
+        return_value=cached_payload,
+    ):
+        with patch("weather_detail._fetch_forecast_json", new=AsyncMock()) as forecast_mock:
+            result = await fetch_weather_detail(41.0, 29.0, redis_client=redis)
+
+    forecast_mock.assert_not_called()
+    assert result.weather.current is not None
+    assert result.weather.current.temperature == 20.0
 
 
 def _forecast_payload() -> dict:
@@ -93,15 +136,13 @@ async def test_fetch_weather_detail_raises_when_forecast_fails():
 
 @pytest.mark.asyncio
 async def test_fetch_weather_detail_raises_when_forecast_times_out():
-    async def _slow_forecast(*_args, **_kwargs):
-        await asyncio.sleep(10)
-        return _forecast_payload()
-
-    with patch("weather_detail.FORECAST_TIMEOUT_SECONDS", 0.1):
-        with patch("weather_detail._fetch_forecast_json", new=AsyncMock(side_effect=_slow_forecast)):
-            with patch(
-                "weather_detail.fetch_lifestyle_indices",
-                new=AsyncMock(return_value=LifestyleIndicesResponse(latitude=1.0, longitude=2.0)),
-            ):
-                with pytest.raises(ForecastUnavailableError):
-                    await fetch_weather_detail(1.0, 2.0)
+    with patch(
+        "weather_detail._fetch_forecast_json",
+        new=AsyncMock(side_effect=httpx.ReadTimeout("forecast read timeout")),
+    ):
+        with patch(
+            "weather_detail.fetch_lifestyle_indices",
+            new=AsyncMock(return_value=LifestyleIndicesResponse(latitude=1.0, longitude=2.0)),
+        ):
+            with pytest.raises(ForecastUnavailableError):
+                await fetch_weather_detail(1.0, 2.0)

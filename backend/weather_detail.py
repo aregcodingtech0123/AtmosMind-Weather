@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
 from typing import Any, Literal
 
 import httpx
@@ -18,12 +20,24 @@ from lifestyle_indices import (
     _empty_lifestyle_response,
     fetch_lifestyle_indices,
 )
+from logging_config import log_outbound_api
+from redis_cache import get_cached_weather_detail, set_cached_weather_detail
 
 logger = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-FORECAST_TIMEOUT_SECONDS = 20.0
-HTTP_TIMEOUT = httpx.Timeout(FORECAST_TIMEOUT_SECONDS, connect=5.0)
+FORECAST_READ_TIMEOUT_SECONDS = max(
+    10.0, float(os.getenv("WEATHER_DETAIL_READ_TIMEOUT_SECONDS", "35"))
+)
+FORECAST_CONNECT_TIMEOUT_SECONDS = max(
+    2.0, float(os.getenv("WEATHER_DETAIL_CONNECT_TIMEOUT_SECONDS", "8"))
+)
+MAX_RETRIES = max(1, int(os.getenv("WEATHER_DETAIL_MAX_RETRIES", "4")))
+RETRY_BASE_DELAY_SECONDS = max(0.5, float(os.getenv("WEATHER_DETAIL_RETRY_BASE_DELAY_SECONDS", "1.5")))
+HTTP_TIMEOUT = httpx.Timeout(
+    FORECAST_READ_TIMEOUT_SECONDS,
+    connect=FORECAST_CONNECT_TIMEOUT_SECONDS,
+)
 
 
 class WeatherDetailCurrent(BaseModel):
@@ -121,36 +135,93 @@ async def _fetch_forecast_json(
     client: httpx.AsyncClient,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    max_retries = 3
-    base_delay = 1.0
-    last_exc = None
-    
-    for attempt in range(max_retries):
+    """Fetch Open-Meteo forecast with retry/backoff (429 + transient network errors)."""
+    last_exc: Exception | None = None
+
+    for attempt in range(MAX_RETRIES):
+        started = time.perf_counter()
+        status_code: int | None = None
         try:
             response = await client.get(FORECAST_URL, params=params)
+            status_code = response.status_code
+            if response.status_code == 429:
+                latency_ms = (time.perf_counter() - started) * 1000
+                log_outbound_api(
+                    "open-meteo-forecast-detail",
+                    success=False,
+                    latency_ms=latency_ms,
+                    status_code=429,
+                    error="rate_limited",
+                    attempt=attempt + 1,
+                )
+                delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                logger.warning(
+                    "Forecast detail rate limited (429), retry in %.1fs (attempt %d/%d)",
+                    delay,
+                    attempt + 1,
+                    MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                last_exc = httpx.HTTPStatusError(
+                    "429 Too Many Requests",
+                    request=response.request,
+                    response=response,
+                )
+                continue
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):
                 raise ValueError("Forecast API returned a non-object JSON payload.")
+            latency_ms = (time.perf_counter() - started) * 1000
+            log_outbound_api(
+                "open-meteo-forecast-detail",
+                success=True,
+                latency_ms=latency_ms,
+                status_code=status_code,
+            )
             return payload
         except httpx.HTTPStatusError as exc:
             last_exc = exc
-            if exc.response.status_code == 429:
-                delay = base_delay * (2 ** attempt)
-                logger.warning("Forecast API rate limited (429), retrying in %.1fs (attempt %d/%d)", delay, attempt + 1, max_retries)
+            latency_ms = (time.perf_counter() - started) * 1000
+            log_outbound_api(
+                "open-meteo-forecast-detail",
+                success=False,
+                latency_ms=latency_ms,
+                status_code=exc.response.status_code if exc.response else status_code,
+                error=str(exc),
+                attempt=attempt + 1,
+            )
+            if exc.response is not None and exc.response.status_code == 429:
+                delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
                 await asyncio.sleep(delay)
                 continue
-            logger.error("Forecast API HTTP error: %s (status %s)", exc, exc.response.status_code)
             raise
-        except httpx.RequestError as exc:
+        except (httpx.RequestError, ValueError) as exc:
             last_exc = exc
-            delay = base_delay * (2 ** attempt)
-            logger.warning("Forecast API request error: %s, retrying in %.1fs (attempt %d/%d)", exc, delay, attempt + 1, max_retries)
+            latency_ms = (time.perf_counter() - started) * 1000
+            log_outbound_api(
+                "open-meteo-forecast-detail",
+                success=False,
+                latency_ms=latency_ms,
+                status_code=status_code,
+                error=str(exc),
+                attempt=attempt + 1,
+            )
+            if attempt + 1 >= MAX_RETRIES:
+                break
+            delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
+            logger.warning(
+                "Forecast detail request failed (%s), retry in %.1fs (attempt %d/%d)",
+                exc,
+                delay,
+                attempt + 1,
+                MAX_RETRIES,
+            )
             await asyncio.sleep(delay)
-            continue
-            
-    if last_exc:
+
+    if last_exc is not None:
         raise last_exc
+    raise ForecastUnavailableError("Forecast request failed after retries.")
 
 
 def _parse_forecast_payload(payload: dict[str, Any]) -> WeatherDetailWeather:
@@ -169,6 +240,17 @@ def _parse_forecast_payload(payload: dict[str, Any]) -> WeatherDetailWeather:
                 humidity=_safe_float(current_raw.get("relative_humidity_2m")),
                 wind_speed=_safe_float(current_raw.get("wind_speed_10m")),
                 feels_like=_safe_float(current_raw.get("apparent_temperature")),
+            )
+
+    # Fallback: legacy current_weather block when "current=" params are omitted upstream.
+    if current is None:
+        legacy = payload.get("current_weather") or {}
+        temperature = _safe_float(legacy.get("temperature"))
+        weather_code = _safe_int(legacy.get("weathercode"))
+        if temperature is not None and weather_code is not None:
+            current = WeatherDetailCurrent(
+                temperature=temperature,
+                weather_code=weather_code,
             )
 
     hourly = WeatherDetailHourly(
@@ -195,6 +277,10 @@ def _parse_forecast_payload(payload: dict[str, Any]) -> WeatherDetailWeather:
     return WeatherDetailWeather(current=current, hourly=hourly, daily=daily)
 
 
+def _response_from_cache(cached: dict[str, Any]) -> WeatherDetailResponse:
+    return WeatherDetailResponse.model_validate(cached)
+
+
 async def fetch_weather_detail(
     latitude: float,
     longitude: float,
@@ -209,6 +295,15 @@ async def fetch_weather_detail(
     Lifestyle failures return null lifestyle fields without raising.
     """
     lang = (language or "en").split("-")[0][:8]
+
+    if redis_client is not None:
+        cached = get_cached_weather_detail(redis_client, latitude, longitude, lang, unit)
+        if cached is not None:
+            try:
+                return _response_from_cache(cached)
+            except Exception as exc:
+                logger.debug("Invalid weather detail cache entry, refetching: %s", exc)
+
     forecast_params = {
         "latitude": latitude,
         "longitude": longitude,
@@ -226,10 +321,7 @@ async def fetch_weather_detail(
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         forecast_result, lifestyle_result = await asyncio.gather(
-            asyncio.wait_for(
-                _fetch_forecast_json(client, forecast_params),
-                timeout=FORECAST_TIMEOUT_SECONDS,
-            ),
+            _fetch_forecast_json(client, forecast_params),
             fetch_lifestyle_indices(latitude, longitude, redis_client=redis_client),
             return_exceptions=True,
         )
@@ -241,6 +333,18 @@ async def fetch_weather_detail(
             longitude,
             forecast_result,
         )
+        if redis_client is not None:
+            stale = get_cached_weather_detail(redis_client, latitude, longitude, lang, unit)
+            if stale is not None:
+                try:
+                    logger.info(
+                        "Serving stale cached weather detail for (%s, %s)",
+                        latitude,
+                        longitude,
+                    )
+                    return _response_from_cache(stale)
+                except Exception:
+                    pass
         raise ForecastUnavailableError(str(forecast_result)) from forecast_result
 
     if isinstance(lifestyle_result, Exception):
@@ -255,9 +359,24 @@ async def fetch_weather_detail(
         lifestyle_indices = lifestyle_result
 
     weather = _parse_forecast_payload(forecast_result)
-    return WeatherDetailResponse(
+    response = WeatherDetailResponse(
         latitude=latitude,
         longitude=longitude,
         weather=weather,
         lifestyle_indices=lifestyle_indices,
     )
+
+    if redis_client is not None:
+        try:
+            set_cached_weather_detail(
+                redis_client,
+                latitude,
+                longitude,
+                lang,
+                unit,
+                response.model_dump(),
+            )
+        except Exception as exc:
+            logger.debug("Failed to cache weather detail: %s", exc)
+
+    return response
