@@ -22,8 +22,8 @@ from lifestyle_indices import (
 logger = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-FORECAST_TIMEOUT_SECONDS = 8.0
-HTTP_TIMEOUT = httpx.Timeout(FORECAST_TIMEOUT_SECONDS, connect=3.0)
+FORECAST_TIMEOUT_SECONDS = 20.0
+HTTP_TIMEOUT = httpx.Timeout(FORECAST_TIMEOUT_SECONDS, connect=5.0)
 
 
 class WeatherDetailCurrent(BaseModel):
@@ -121,12 +121,36 @@ async def _fetch_forecast_json(
     client: httpx.AsyncClient,
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    response = await client.get(FORECAST_URL, params=params)
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("Forecast API returned a non-object JSON payload.")
-    return payload
+    max_retries = 3
+    base_delay = 1.0
+    last_exc = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = await client.get(FORECAST_URL, params=params)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("Forecast API returned a non-object JSON payload.")
+            return payload
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            if exc.response.status_code == 429:
+                delay = base_delay * (2 ** attempt)
+                logger.warning("Forecast API rate limited (429), retrying in %.1fs (attempt %d/%d)", delay, attempt + 1, max_retries)
+                await asyncio.sleep(delay)
+                continue
+            logger.error("Forecast API HTTP error: %s (status %s)", exc, exc.response.status_code)
+            raise
+        except httpx.RequestError as exc:
+            last_exc = exc
+            delay = base_delay * (2 ** attempt)
+            logger.warning("Forecast API request error: %s, retrying in %.1fs (attempt %d/%d)", exc, delay, attempt + 1, max_retries)
+            await asyncio.sleep(delay)
+            continue
+            
+    if last_exc:
+        raise last_exc
 
 
 def _parse_forecast_payload(payload: dict[str, Any]) -> WeatherDetailWeather:
