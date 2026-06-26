@@ -40,7 +40,9 @@ from security import (
     RATE_LIMIT_WINDOW_SECONDS,
     enforce_rate_limit,
     evaluate_chat_input_safety,
+    get_allowed_origins,
     get_client_ip,
+    get_cors_origin_regex,
 )
 from lifestyle_indices import LifestyleIndicesResponse, fetch_lifestyle_indices
 from weather_detail import ForecastUnavailableError, WeatherDetailResponse, fetch_weather_detail
@@ -223,18 +225,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS: explicit allowlist via ALLOWED_ORIGINS (comma-separated origins).
-# Example (Render): ALLOWED_ORIGINS=https://atmosmindweather.com,https://www.atmosmindweather.com,http://localhost:3000
-_allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "").strip()
-_cors_allowed_origins = (
-    [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
-    if _allowed_origins_raw
-    else ["http://localhost:3000"]
-)
+# CORS: ALLOWED_ORIGINS (comma-separated) + regex for Vercel preview deploys (*.vercel.app).
+# Example ALLOWED_ORIGINS: https://atmosmindweather.com,https://www.atmosmindweather.com,http://localhost:3000
+_cors_allowed_origins = get_allowed_origins()
+_cors_origin_regex = get_cors_origin_regex()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allowed_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

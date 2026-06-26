@@ -60,6 +60,16 @@ def get_allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+# Vercel preview/production deploys (*.vercel.app). Override via CORS_ORIGIN_REGEX.
+DEFAULT_CORS_ORIGIN_REGEX = r"https://.*\.vercel\.app"
+
+
+def get_cors_origin_regex() -> str | None:
+    """Optional regex for dynamic browser origins (e.g. Vercel preview URLs)."""
+    raw = os.getenv("CORS_ORIGIN_REGEX", DEFAULT_CORS_ORIGIN_REGEX).strip()
+    return raw or None
+
+
 def _rate_limit_redis_key(endpoint_key: str, client_ip: str) -> str:
     return f"{RATE_LIMIT_REDIS_PREFIX}:{endpoint_key}:{client_ip}"
 

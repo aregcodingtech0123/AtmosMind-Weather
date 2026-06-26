@@ -404,3 +404,19 @@ class TestRateLimiting:
 
             # Different endpoint bucket should still be allowed.
             assert client.post("/api/get-city-advice", json=advice_payload).status_code == 200
+
+
+def test_cors_preflight_allows_vercel_preview_origin():
+    client = TestClient(api.app)
+    response = client.options(
+        "/api/weather/batch",
+        headers={
+            "Origin": "https://atmos-mind-weather-seq4.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == (
+        "https://atmos-mind-weather-seq4.vercel.app"
+    )

@@ -1,13 +1,14 @@
 """Unit tests for security helpers (rate limit, CORS origins, chat moderation)."""
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 import security
-from security import ChatSafetyVerdict, clear_memory_rate_limits, get_allowed_origins
+from security import ChatSafetyVerdict, clear_memory_rate_limits, get_allowed_origins, get_cors_origin_regex
 
 
 def test_get_allowed_origins_defaults_to_localhost():
@@ -22,6 +23,17 @@ def test_get_allowed_origins_parses_comma_list():
         clear=False,
     ):
         assert get_allowed_origins() == ["https://a.example.com", "http://localhost:3000"]
+
+
+def test_get_cors_origin_regex_defaults_to_vercel():
+    env = {k: v for k, v in os.environ.items() if k != "CORS_ORIGIN_REGEX"}
+    with patch.dict("os.environ", env, clear=True):
+        assert get_cors_origin_regex() == security.DEFAULT_CORS_ORIGIN_REGEX
+
+
+def test_get_cors_origin_regex_empty_disables_regex():
+    with patch.dict("os.environ", {"CORS_ORIGIN_REGEX": ""}, clear=False):
+        assert get_cors_origin_regex() is None
 
 
 @pytest.mark.asyncio
