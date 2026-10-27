@@ -1,6 +1,7 @@
 """Tests for unified weather detail service."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -132,6 +133,113 @@ async def test_fetch_weather_detail_raises_when_forecast_fails():
         ):
             with pytest.raises(ForecastUnavailableError):
                 await fetch_weather_detail(1.0, 2.0)
+
+
+@pytest.mark.asyncio
+async def test_share_forecast_calls_open_meteo_forecast_exactly_once(monkeypatch):
+    call_count = 0
+
+    async def fake_forecast(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        return _forecast_payload()
+
+    monkeypatch.setattr("weather_detail.is_weather_detail_share_forecast_enabled", lambda: True)
+    monkeypatch.setattr("weather_detail._fetch_forecast_json", fake_forecast)
+    monkeypatch.setattr(
+        "weather_detail.fetch_air_quality_for_coords",
+        AsyncMock(
+            return_value={
+                "timezone": "Europe/London",
+                "hourly": {
+                    "time": ["2025-06-24T12:00"],
+                    "european_aqi": [10],
+                    "us_aqi": [20],
+                    "uv_index": [1.0],
+                    "birch_pollen": [0.0],
+                    "grass_pollen": [0.0],
+                    "ragweed_pollen": [0.0],
+                },
+            }
+        ),
+    )
+
+    await fetch_weather_detail(51.5, -0.12)
+    assert call_count == 1, f"expected 1 forecast call, got {call_count}"
+
+
+@pytest.mark.asyncio
+async def test_fetch_weather_detail_share_forecast_parallel_no_second_forecast():
+    lifestyle = LifestyleIndicesResponse(latitude=51.5, longitude=-0.12, aqi_value=15)
+    aq_payload = {
+        "timezone": "Europe/London",
+        "hourly": {
+            "time": ["2025-06-24T12:00"],
+            "european_aqi": [15],
+            "us_aqi": [30],
+            "uv_index": [2.0],
+            "birch_pollen": [0.0],
+            "grass_pollen": [0.0],
+            "ragweed_pollen": [0.0],
+        },
+    }
+
+    with patch("weather_detail.is_weather_detail_share_forecast_enabled", return_value=True):
+        with patch(
+            "weather_detail._fetch_forecast_json",
+            new=AsyncMock(return_value=_forecast_payload()),
+        ):
+            with patch(
+                "weather_detail.fetch_air_quality_for_coords",
+                new=AsyncMock(return_value=aq_payload),
+            ):
+                with patch(
+                    "weather_detail.fetch_lifestyle_indices",
+                    new=AsyncMock(),
+                ) as lifestyle_mock:
+                    with patch(
+                        "weather_detail.log_detail_lifestyle_shared_payload",
+                    ) as shared_log:
+                        result = await fetch_weather_detail(51.5, -0.12)
+
+    lifestyle_mock.assert_not_called()
+    shared_log.assert_called_once()
+    assert result.lifestyle_indices.aqi_value == 15
+
+
+@pytest.mark.asyncio
+async def test_fetch_weather_detail_share_forecast_forecast_fail_cancels_air_task():
+    air_started = asyncio.Event()
+    air_cancelled = asyncio.Event()
+
+    async def slow_air_quality(*_args, **_kwargs):
+        air_started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            air_cancelled.set()
+            raise
+        return {}
+
+    with patch("weather_detail.is_weather_detail_share_forecast_enabled", return_value=True):
+        with patch(
+            "weather_detail._fetch_forecast_json",
+            new=AsyncMock(side_effect=httpx.ReadTimeout("forecast timeout")),
+        ):
+            with patch(
+                "weather_detail.fetch_air_quality_for_coords",
+                new=AsyncMock(side_effect=slow_air_quality),
+            ):
+                with patch(
+                    "weather_detail.lifestyle_from_forecast_and_air",
+                    new=MagicMock(),
+                ) as merge_mock:
+                    with pytest.raises(ForecastUnavailableError):
+                        await fetch_weather_detail(1.0, 2.0)
+
+    await asyncio.wait_for(air_started.wait(), timeout=1.0)
+    await asyncio.wait_for(air_cancelled.wait(), timeout=1.0)
+    merge_mock.assert_not_called()
 
 
 @pytest.mark.asyncio

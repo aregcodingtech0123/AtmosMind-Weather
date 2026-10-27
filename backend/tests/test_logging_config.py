@@ -25,3 +25,32 @@ def test_log_outbound_api_smoke():
         status_code=429,
         error="rate_limited",
     )
+
+
+def test_resilience_event_emitters_smoke():
+    from logging_config import (
+        log_cache_event,
+        log_detail_lifestyle_shared_payload,
+        log_upstream_status_event,
+    )
+
+    setup_logging()
+    log_cache_event(
+        "cache_hit", cache="weather", cache_kind="weather_current", lat=41.0, lon=29.0
+    )
+    log_cache_event("cache_miss", cache="aq", cache_kind="air_quality", lat=41.0, lon=29.0)
+    log_upstream_status_event(
+        "upstream_429",
+        service="open-meteo-forecast",
+        status_code=429,
+        attempt=1,
+        locations=10,
+    )
+    log_upstream_status_event(
+        "upstream_5xx",
+        service="open-meteo-forecast-detail",
+        status_code=503,
+        attempt=2,
+    )
+    # Placeholder emitter for Phase 0a (not wired to weather_detail yet).
+    log_detail_lifestyle_shared_payload(latitude=41.0, longitude=29.0, shared=True)

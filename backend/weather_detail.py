@@ -7,6 +7,7 @@ lifestyle failures degrade to null fields inside a 200 response.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
@@ -18,9 +19,21 @@ from pydantic import BaseModel, Field
 from lifestyle_indices import (
     LifestyleIndicesResponse,
     _empty_lifestyle_response,
+    fetch_air_quality_for_coords,
     fetch_lifestyle_indices,
+    lifestyle_from_forecast_and_air,
 )
-from logging_config import log_outbound_api
+from logging_config import (
+    log_detail_lifestyle_shared_payload,
+    log_outbound_api,
+    log_upstream_status_event,
+)
+from metrics import (
+    is_weather_detail_share_forecast_enabled,
+    record_upstream_429_attempt,
+    record_upstream_429_request,
+    record_upstream_5xx_attempt,
+)
 from redis_cache import get_cached_weather_detail, set_cached_weather_detail
 
 logger = logging.getLogger(__name__)
@@ -137,87 +150,106 @@ async def _fetch_forecast_json(
 ) -> dict[str, Any]:
     """Fetch Open-Meteo forecast with retry/backoff (429 + transient network errors)."""
     last_exc: Exception | None = None
+    saw_429 = False
 
-    for attempt in range(MAX_RETRIES):
-        started = time.perf_counter()
-        status_code: int | None = None
-        try:
-            response = await client.get(FORECAST_URL, params=params)
-            status_code = response.status_code
-            if response.status_code == 429:
+    try:
+        for attempt in range(MAX_RETRIES):
+            started = time.perf_counter()
+            status_code: int | None = None
+            try:
+                response = await client.get(FORECAST_URL, params=params)
+                status_code = response.status_code
+                if response.status_code == 429:
+                    saw_429 = True
+                    latency_ms = (time.perf_counter() - started) * 1000
+                    log_outbound_api(
+                        "open-meteo-forecast-detail",
+                        success=False,
+                        latency_ms=latency_ms,
+                        status_code=429,
+                        error="rate_limited",
+                        attempt=attempt + 1,
+                    )
+                    log_upstream_status_event(
+                        "upstream_429",
+                        service="open-meteo-forecast-detail",
+                        status_code=429,
+                        attempt=attempt + 1,
+                    )
+                    record_upstream_429_attempt()
+                    delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                    logger.warning(
+                        "Forecast detail rate limited (429), retry in %.1fs (attempt %d/%d)",
+                        delay,
+                        attempt + 1,
+                        MAX_RETRIES,
+                    )
+                    await asyncio.sleep(delay)
+                    last_exc = httpx.HTTPStatusError(
+                        "429 Too Many Requests",
+                        request=response.request,
+                        response=response,
+                    )
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Forecast API returned a non-object JSON payload.")
+                latency_ms = (time.perf_counter() - started) * 1000
+                log_outbound_api(
+                    "open-meteo-forecast-detail",
+                    success=True,
+                    latency_ms=latency_ms,
+                    status_code=status_code,
+                )
+                return payload
+            except httpx.HTTPStatusError as exc:
+                # 429 is handled above (before raise_for_status); this path is 4xx/5xx only.
+                last_exc = exc
+                latency_ms = (time.perf_counter() - started) * 1000
+                err_status = exc.response.status_code if exc.response else status_code
+                log_outbound_api(
+                    "open-meteo-forecast-detail",
+                    success=False,
+                    latency_ms=latency_ms,
+                    status_code=err_status,
+                    error=str(exc),
+                    attempt=attempt + 1,
+                )
+                if err_status is not None and 500 <= err_status < 600:
+                    log_upstream_status_event(
+                        "upstream_5xx",
+                        service="open-meteo-forecast-detail",
+                        status_code=err_status,
+                        attempt=attempt + 1,
+                    )
+                    record_upstream_5xx_attempt()
+                raise
+            except (httpx.RequestError, ValueError) as exc:
+                last_exc = exc
                 latency_ms = (time.perf_counter() - started) * 1000
                 log_outbound_api(
                     "open-meteo-forecast-detail",
                     success=False,
                     latency_ms=latency_ms,
-                    status_code=429,
-                    error="rate_limited",
+                    status_code=status_code,
+                    error=str(exc),
                     attempt=attempt + 1,
                 )
+                if attempt + 1 >= MAX_RETRIES:
+                    break
                 delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
                 logger.warning(
-                    "Forecast detail rate limited (429), retry in %.1fs (attempt %d/%d)",
+                    "Forecast detail request failed (%s), retry in %.1fs (attempt %d/%d)",
+                    exc,
                     delay,
                     attempt + 1,
                     MAX_RETRIES,
                 )
                 await asyncio.sleep(delay)
-                last_exc = httpx.HTTPStatusError(
-                    "429 Too Many Requests",
-                    request=response.request,
-                    response=response,
-                )
-                continue
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, dict):
-                raise ValueError("Forecast API returned a non-object JSON payload.")
-            latency_ms = (time.perf_counter() - started) * 1000
-            log_outbound_api(
-                "open-meteo-forecast-detail",
-                success=True,
-                latency_ms=latency_ms,
-                status_code=status_code,
-            )
-            return payload
-        except httpx.HTTPStatusError as exc:
-            last_exc = exc
-            latency_ms = (time.perf_counter() - started) * 1000
-            log_outbound_api(
-                "open-meteo-forecast-detail",
-                success=False,
-                latency_ms=latency_ms,
-                status_code=exc.response.status_code if exc.response else status_code,
-                error=str(exc),
-                attempt=attempt + 1,
-            )
-            if exc.response is not None and exc.response.status_code == 429:
-                delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
-                await asyncio.sleep(delay)
-                continue
-            raise
-        except (httpx.RequestError, ValueError) as exc:
-            last_exc = exc
-            latency_ms = (time.perf_counter() - started) * 1000
-            log_outbound_api(
-                "open-meteo-forecast-detail",
-                success=False,
-                latency_ms=latency_ms,
-                status_code=status_code,
-                error=str(exc),
-                attempt=attempt + 1,
-            )
-            if attempt + 1 >= MAX_RETRIES:
-                break
-            delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
-            logger.warning(
-                "Forecast detail request failed (%s), retry in %.1fs (attempt %d/%d)",
-                exc,
-                delay,
-                attempt + 1,
-                MAX_RETRIES,
-            )
-            await asyncio.sleep(delay)
+    finally:
+        if saw_429:
+            record_upstream_429_request()
 
     if last_exc is not None:
         raise last_exc
@@ -281,6 +313,78 @@ def _response_from_cache(cached: dict[str, Any]) -> WeatherDetailResponse:
     return WeatherDetailResponse.model_validate(cached)
 
 
+def _detail_forecast_params(
+    latitude: float,
+    longitude: float,
+    lang: str,
+    unit: Literal["metric", "imperial"],
+) -> dict[str, Any]:
+    """Open-Meteo forecast params for city detail (visibility/dew only when share flag is on)."""
+    share_forecast = is_weather_detail_share_forecast_enabled()
+    current_fields = (
+        "temperature_2m,weather_code,relative_humidity_2m,"
+        "wind_speed_10m,apparent_temperature"
+    )
+    hourly_fields = "temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m"
+    if share_forecast:
+        current_fields += ",visibility,dew_point_2m"
+        hourly_fields += ",visibility,dew_point_2m"
+
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "temperature_unit": "fahrenheit" if unit == "imperial" else "celsius",
+        "current": current_fields,
+        "hourly": hourly_fields,
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum",
+        "timezone": "auto",
+        "language": lang,
+        "forecast_days": 7,
+    }
+
+
+async def _fetch_forecast_and_lifestyle_shared(
+    client: httpx.AsyncClient,
+    forecast_params: dict[str, Any],
+    latitude: float,
+    longitude: float,
+    redis_client: Any,
+) -> tuple[dict[str, Any], LifestyleIndicesResponse]:
+    """
+    One forecast HTTP call + parallel air quality (no second forecast call).
+
+    If forecast fails, the air-quality task is cancelled (forecast failure short-circuits
+    lifestyle assembly for the detail page).
+    """
+    forecast_task = asyncio.create_task(_fetch_forecast_json(client, forecast_params))
+    aq_task = asyncio.create_task(
+        fetch_air_quality_for_coords(client, redis_client, latitude, longitude)
+    )
+    try:
+        forecast_result = await forecast_task
+    except Exception:
+        aq_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await aq_task
+        raise
+
+    air_result: Any
+    try:
+        air_result = await aq_task
+    except Exception as exc:
+        air_result = exc
+
+    log_detail_lifestyle_shared_payload(
+        latitude=latitude,
+        longitude=longitude,
+        shared=True,
+    )
+    lifestyle_indices = lifestyle_from_forecast_and_air(
+        forecast_result, air_result, latitude, longitude
+    )
+    return forecast_result, lifestyle_indices
+
+
 async def fetch_weather_detail(
     latitude: float,
     longitude: float,
@@ -304,59 +408,81 @@ async def fetch_weather_detail(
             except Exception as exc:
                 logger.debug("Invalid weather detail cache entry, refetching: %s", exc)
 
-    forecast_params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "temperature_unit": "fahrenheit" if unit == "imperial" else "celsius",
-        "current": (
-            "temperature_2m,weather_code,relative_humidity_2m,"
-            "wind_speed_10m,apparent_temperature"
-        ),
-        "hourly": "temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m",
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum",
-        "timezone": "auto",
-        "language": lang,
-        "forecast_days": 7,
-    }
+    forecast_params = _detail_forecast_params(latitude, longitude, lang, unit)
+    share_forecast = is_weather_detail_share_forecast_enabled()
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        forecast_result, lifestyle_result = await asyncio.gather(
-            _fetch_forecast_json(client, forecast_params),
-            fetch_lifestyle_indices(latitude, longitude, redis_client=redis_client),
-            return_exceptions=True,
-        )
-
-    if isinstance(forecast_result, Exception):
-        logger.warning(
-            "Forecast detail failed for (%s, %s): %s",
-            latitude,
-            longitude,
-            forecast_result,
-        )
-        if redis_client is not None:
-            stale = get_cached_weather_detail(redis_client, latitude, longitude, lang, unit)
-            if stale is not None:
-                try:
-                    logger.info(
-                        "Serving stale cached weather detail for (%s, %s)",
-                        latitude,
-                        longitude,
+        if share_forecast:
+            try:
+                forecast_result, lifestyle_indices = await _fetch_forecast_and_lifestyle_shared(
+                    client,
+                    forecast_params,
+                    latitude,
+                    longitude,
+                    redis_client,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Forecast detail failed for (%s, %s): %s",
+                    latitude,
+                    longitude,
+                    exc,
+                )
+                if redis_client is not None:
+                    stale = get_cached_weather_detail(
+                        redis_client, latitude, longitude, lang, unit
                     )
-                    return _response_from_cache(stale)
-                except Exception:
-                    pass
-        raise ForecastUnavailableError(str(forecast_result)) from forecast_result
+                    if stale is not None:
+                        try:
+                            logger.info(
+                                "Serving stale cached weather detail for (%s, %s)",
+                                latitude,
+                                longitude,
+                            )
+                            return _response_from_cache(stale)
+                        except Exception:
+                            pass
+                raise ForecastUnavailableError(str(exc)) from exc
+        else:
+            forecast_result, lifestyle_result = await asyncio.gather(
+                _fetch_forecast_json(client, forecast_params),
+                fetch_lifestyle_indices(latitude, longitude, redis_client=redis_client),
+                return_exceptions=True,
+            )
 
-    if isinstance(lifestyle_result, Exception):
-        logger.warning(
-            "Lifestyle slice failed inside weather detail for (%s, %s): %s",
-            latitude,
-            longitude,
-            lifestyle_result,
-        )
-        lifestyle_indices = _empty_lifestyle_response(latitude, longitude)
-    else:
-        lifestyle_indices = lifestyle_result
+            if isinstance(forecast_result, Exception):
+                logger.warning(
+                    "Forecast detail failed for (%s, %s): %s",
+                    latitude,
+                    longitude,
+                    forecast_result,
+                )
+                if redis_client is not None:
+                    stale = get_cached_weather_detail(
+                        redis_client, latitude, longitude, lang, unit
+                    )
+                    if stale is not None:
+                        try:
+                            logger.info(
+                                "Serving stale cached weather detail for (%s, %s)",
+                                latitude,
+                                longitude,
+                            )
+                            return _response_from_cache(stale)
+                        except Exception:
+                            pass
+                raise ForecastUnavailableError(str(forecast_result)) from forecast_result
+
+            if isinstance(lifestyle_result, Exception):
+                logger.warning(
+                    "Lifestyle slice failed inside weather detail for (%s, %s): %s",
+                    latitude,
+                    longitude,
+                    lifestyle_result,
+                )
+                lifestyle_indices = _empty_lifestyle_response(latitude, longitude)
+            else:
+                lifestyle_indices = lifestyle_result
 
     weather = _parse_forecast_payload(forecast_result)
     response = WeatherDetailResponse(

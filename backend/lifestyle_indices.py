@@ -223,6 +223,59 @@ async def _fetch_forecast_slice(
     )
 
 
+def _air_quality_params(latitude: float, longitude: float) -> dict[str, Any]:
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": (
+            "european_aqi,us_aqi,uv_index,"
+            "birch_pollen,grass_pollen,ragweed_pollen"
+        ),
+        "timezone": "auto",
+        "forecast_days": 1,
+    }
+
+
+async def fetch_air_quality_for_coords(
+    client: httpx.AsyncClient,
+    redis_client: Any,
+    latitude: float,
+    longitude: float,
+) -> dict[str, Any]:
+    """Outbound air-quality fetch for a coordinate pair (Redis cache + Open-Meteo AQ API)."""
+    return await _fetch_air_quality_slice(
+        client,
+        redis_client,
+        latitude,
+        longitude,
+        _air_quality_params(latitude, longitude),
+    )
+
+
+def lifestyle_from_forecast_and_air(
+    forecast_data: dict[str, Any],
+    air_result: Any,
+    latitude: float,
+    longitude: float,
+) -> LifestyleIndicesResponse:
+    """Merge optional forecast + air-quality payloads into ``LifestyleIndicesResponse``."""
+    air_data: dict[str, Any] = {}
+    if isinstance(air_result, Exception):
+        logger.warning(
+            "Air quality slice failed for (%s, %s): %s",
+            latitude,
+            longitude,
+            air_result,
+        )
+    else:
+        air_data = air_result
+
+    if not forecast_data and not air_data:
+        return _empty_lifestyle_response(latitude, longitude)
+
+    return _build_lifestyle_indices(forecast_data, air_data, latitude, longitude)
+
+
 async def _fetch_air_quality_slice(
     client: httpx.AsyncClient,
     redis_client: Any,
@@ -339,13 +392,30 @@ async def fetch_lifestyle_indices(
     latitude: float,
     longitude: float,
     redis_client: Any = None,
+    forecast_payload: dict[str, Any] | None = None,
 ) -> LifestyleIndicesResponse:
     """
     Parallel fetch: forecast (visibility, dew point) + air quality (AQI, UV, pollen).
 
+    ``forecast_payload`` is internal-only (city-detail shared forecast). When set, the
+    forecast HTTP slice is skipped and only air quality is fetched. Not used by the
+    public ``/api/lifestyle-indices`` route (lat/lon only).
+
     Air quality is Redis-cached and capped at 3 s. Partial upstream failures always
     return HTTP 200 with null lifestyle fields — never raise to the API layer.
     """
+    if forecast_payload is not None:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            try:
+                air_result = await fetch_air_quality_for_coords(
+                    client, redis_client, latitude, longitude
+                )
+            except Exception as exc:
+                air_result = exc
+        return lifestyle_from_forecast_and_air(
+            forecast_payload, air_result, latitude, longitude
+        )
+
     forecast_params = {
         "latitude": latitude,
         "longitude": longitude,
@@ -354,29 +424,15 @@ async def fetch_lifestyle_indices(
         "timezone": "auto",
         "forecast_days": 1,
     }
-    air_quality_params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "hourly": (
-            "european_aqi,us_aqi,uv_index,"
-            "birch_pollen,grass_pollen,ragweed_pollen"
-        ),
-        "timezone": "auto",
-        "forecast_days": 1,
-    }
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         forecast_result, air_result = await asyncio.gather(
             _fetch_forecast_slice(client, forecast_params),
-            _fetch_air_quality_slice(
-                client, redis_client, latitude, longitude, air_quality_params
-            ),
+            fetch_air_quality_for_coords(client, redis_client, latitude, longitude),
             return_exceptions=True,
         )
 
     forecast_data: dict[str, Any] = {}
-    air_data: dict[str, Any] = {}
-
     if isinstance(forecast_result, Exception):
         logger.warning(
             "Forecast slice failed for (%s, %s): %s",
@@ -387,17 +443,6 @@ async def fetch_lifestyle_indices(
     else:
         forecast_data = forecast_result
 
-    if isinstance(air_result, Exception):
-        logger.warning(
-            "Air quality slice failed for (%s, %s): %s",
-            latitude,
-            longitude,
-            air_result,
-        )
-    else:
-        air_data = air_result
-
-    if not forecast_data and not air_data:
-        return _empty_lifestyle_response(latitude, longitude)
-
-    return _build_lifestyle_indices(forecast_data, air_data, latitude, longitude)
+    return lifestyle_from_forecast_and_air(
+        forecast_data, air_result, latitude, longitude
+    )

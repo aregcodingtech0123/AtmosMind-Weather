@@ -12,7 +12,12 @@ from typing import Any
 
 import requests
 
-from logging_config import log_outbound_api
+from logging_config import log_outbound_api, log_upstream_status_event
+from metrics import (
+    record_upstream_429_attempt,
+    record_upstream_429_request,
+    record_upstream_5xx_attempt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,55 +75,79 @@ def _build_batch_forecast_url(lats: list[float], lons: list[float]) -> str:
 
 def _get_json_with_retry(url: str, *, locations: int | None = None) -> Any:
     last_error: Exception | None = None
-    for attempt in range(MAX_RETRIES):
-        started = time.perf_counter()
-        status_code: int | None = None
-        try:
-            response = requests.get(url, timeout=15)
-            status_code = response.status_code
-            if response.status_code == 429:
+    saw_429 = False
+    try:
+        for attempt in range(MAX_RETRIES):
+            started = time.perf_counter()
+            status_code: int | None = None
+            try:
+                response = requests.get(url, timeout=15)
+                status_code = response.status_code
+                if response.status_code == 429:
+                    saw_429 = True
+                    latency_ms = (time.perf_counter() - started) * 1000
+                    log_outbound_api(
+                        "open-meteo-forecast",
+                        success=False,
+                        latency_ms=latency_ms,
+                        status_code=429,
+                        locations=locations,
+                        error="rate_limited",
+                        attempt=attempt + 1,
+                    )
+                    log_upstream_status_event(
+                        "upstream_429",
+                        service="open-meteo-forecast",
+                        status_code=429,
+                        attempt=attempt + 1,
+                        locations=locations,
+                    )
+                    record_upstream_429_attempt()
+                    delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                    time.sleep(delay)
+                    last_error = requests.HTTPError("429 Too Many Requests", response=response)
+                    continue
+                response.raise_for_status()
                 latency_ms = (time.perf_counter() - started) * 1000
+                log_outbound_api(
+                    "open-meteo-forecast",
+                    success=True,
+                    latency_ms=latency_ms,
+                    status_code=status_code,
+                    locations=locations,
+                )
+                return response.json()
+            except requests.RequestException as exc:
+                last_error = exc
+                latency_ms = (time.perf_counter() - started) * 1000
+                if status_code is None and getattr(exc, "response", None) is not None:
+                    status_code = exc.response.status_code
                 log_outbound_api(
                     "open-meteo-forecast",
                     success=False,
                     latency_ms=latency_ms,
-                    status_code=429,
+                    status_code=status_code,
                     locations=locations,
-                    error="rate_limited",
+                    error=str(exc),
                     attempt=attempt + 1,
                 )
+                if status_code is not None and 500 <= status_code < 600:
+                    log_upstream_status_event(
+                        "upstream_5xx",
+                        service="open-meteo-forecast",
+                        status_code=status_code,
+                        attempt=attempt + 1,
+                        locations=locations,
+                    )
+                    record_upstream_5xx_attempt()
+                if attempt + 1 >= MAX_RETRIES:
+                    break
                 delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
                 time.sleep(delay)
-                last_error = requests.HTTPError("429 Too Many Requests", response=response)
-                continue
-            response.raise_for_status()
-            latency_ms = (time.perf_counter() - started) * 1000
-            log_outbound_api(
-                "open-meteo-forecast",
-                success=True,
-                latency_ms=latency_ms,
-                status_code=status_code,
-                locations=locations,
-            )
-            return response.json()
-        except requests.RequestException as exc:
-            last_error = exc
-            latency_ms = (time.perf_counter() - started) * 1000
-            if status_code is None and getattr(exc, "response", None) is not None:
-                status_code = exc.response.status_code
-            log_outbound_api(
-                "open-meteo-forecast",
-                success=False,
-                latency_ms=latency_ms,
-                status_code=status_code,
-                locations=locations,
-                error=str(exc),
-                attempt=attempt + 1,
-            )
-            if attempt + 1 >= MAX_RETRIES:
-                break
-            delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
-            time.sleep(delay)
+    finally:
+        if saw_429:
+            record_upstream_429_request()
+
     assert last_error is not None
     raise last_error
 

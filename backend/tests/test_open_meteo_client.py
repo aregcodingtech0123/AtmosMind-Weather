@@ -39,6 +39,29 @@ def test_batch_fetch_aligns_results_with_input_coords(mock_get):
     mock_get.assert_called_once()
 
 
+@patch("open_meteo_client.time.sleep")
+@patch("open_meteo_client.requests.get")
+def test_get_json_with_retry_counts_429_attempt_and_request(mock_get, _mock_sleep):
+    from metrics import reset_counters_for_tests, snapshot
+    from open_meteo_client import _get_json_with_retry
+
+    reset_counters_for_tests()
+
+    rate_limited = MagicMock()
+    rate_limited.status_code = 429
+
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.json.return_value = {"ok": True}
+
+    mock_get.side_effect = [rate_limited, ok]
+
+    assert _get_json_with_retry("https://api.open-meteo.com/v1/forecast") == {"ok": True}
+    body = snapshot()
+    assert body["upstream"]["429_total"] == 1
+    assert body["upstream"]["429_requests_total"] == 1
+
+
 @patch("open_meteo_client._get_json_with_retry")
 def test_batch_fetch_retries_chunk_on_rate_limit(mock_get):
     response = MagicMock()

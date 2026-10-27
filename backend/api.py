@@ -48,6 +48,7 @@ from lifestyle_indices import LifestyleIndicesResponse, fetch_lifestyle_indices
 from weather_detail import ForecastUnavailableError, WeatherDetailResponse, fetch_weather_detail
 from observability import configure_langsmith_tracing, langsmith_tracing_active
 from logging_config import log_redis_event
+from metrics import is_resilience_endpoint_enabled, snapshot as resilience_snapshot
 
 logger = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "An unexpected error occurred while processing your request. Please try again later."
@@ -130,7 +131,7 @@ def _prewarm_weather_cache(popular: list[dict]) -> None:
             "condition": data.get("condition"),
             "weather_code": data.get("weather_code"),
         }
-        set_cached_weather(r, lat, lon, payload, ttl=900)
+        set_cached_weather(r, lat, lon, payload)
         warmed += 1
 
     logger.info("Weather cache pre-warm complete (%d/%d stored).", warmed, len(misses))
@@ -253,6 +254,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "redis": _get_redis() is not None}
+
+
+@app.get("/api/_health/resilience")
+async def resilience_health_check():
+    """
+    Ops-only resilience counters (cache + upstream). Disabled unless ENABLE_RESILIENCE_ENDPOINT=true.
+    """
+    if not is_resilience_endpoint_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    return resilience_snapshot()
 
 
 class WeatherRequest(BaseModel):
@@ -833,7 +844,7 @@ def _fetch_one_weather(city_display: str, lat: float, lon: float):
         "weather_code": data.get("weather_code"),
     }
     if r:
-        set_cached_weather(r, lat, lon, payload, ttl=900)
+        set_cached_weather(r, lat, lon, payload)
     return BatchWeatherItem(
         city=city_display,
         temperature=payload["temperature"],
@@ -862,7 +873,7 @@ def _fetch_one_weather_by_name(city_display: str):
         "weather_code": None,  # get_live_weather does not return WMO code
     }
     if r:
-        set_cached_weather_by_city(r, city_display, payload, ttl=900)
+        set_cached_weather_by_city(r, city_display, payload)
     return BatchWeatherItem(
         city=city_display,
         temperature=payload["temperature"],
@@ -917,7 +928,7 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
                     "condition": data.get("condition"),
                     "weather_code": data.get("weather_code"),
                 }
-                set_cached_weather(r, lat, lon, payload, ttl=900)
+                set_cached_weather(r, lat, lon, payload)
             results_by_city[city_display] = _batch_item_from_payload(city_display, data)
 
     for city_display in name_only:

@@ -406,6 +406,33 @@ class TestRateLimiting:
             assert client.post("/api/get-city-advice", json=advice_payload).status_code == 200
 
 
+def test_resilience_health_endpoint_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("ENABLE_RESILIENCE_ENDPOINT", raising=False)
+    client = TestClient(api.app)
+    response = client.get("/api/_health/resilience")
+    assert response.status_code == 404
+
+
+def test_resilience_health_endpoint_enabled_returns_schema(monkeypatch):
+    monkeypatch.setenv("ENABLE_RESILIENCE_ENDPOINT", "true")
+    monkeypatch.setenv("WEATHER_DETAIL_SHARE_FORECAST", "false")
+    from metrics import reset_counters_for_tests
+
+    reset_counters_for_tests()
+    client = TestClient(api.app)
+    response = client.get("/api/_health/resilience")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scope"] == "process"
+    assert "uptime_seconds" in data
+    assert data["cache"]["buckets"] == ["weather", "aq"]
+    assert data["cache"]["excludes"] == ["autocomplete"]
+    assert data["upstream"]["429_total"] == 0
+    assert data["detail_dual_call_eliminated"] is False
+    assert data["flags"]["ENABLE_RESILIENCE_ENDPOINT"] is True
+    assert data["flags"]["WEATHER_DETAIL_SHARE_FORECAST"] is False
+
+
 def test_cors_preflight_allows_vercel_preview_origin():
     client = TestClient(api.app)
     response = client.options(

@@ -15,6 +15,42 @@ from lifestyle_indices import (
 
 
 @pytest.mark.asyncio
+async def test_fetch_lifestyle_indices_with_forecast_payload_skips_forecast_http():
+    forecast_payload = {
+        "timezone": "Europe/Istanbul",
+        "current": {"time": "2025-06-24T14:00", "visibility": 7000.0, "dew_point_2m": 12.0},
+        "hourly": {"time": ["2025-06-24T14:00"], "visibility": [7000.0], "dew_point_2m": [12.0]},
+    }
+    air_payload = {
+        "timezone": "Europe/Istanbul",
+        "hourly": {
+            "time": ["2025-06-24T14:00"],
+            "european_aqi": [22],
+            "us_aqi": [40],
+            "uv_index": [3.0],
+            "birch_pollen": [0.0],
+            "grass_pollen": [0.0],
+            "ragweed_pollen": [0.0],
+        },
+    }
+
+    with patch(
+        "lifestyle_indices.fetch_air_quality_for_coords",
+        new=AsyncMock(return_value=air_payload),
+    ):
+        with patch("lifestyle_indices._fetch_forecast_slice", new=AsyncMock()) as forecast_slice:
+            result = await fetch_lifestyle_indices(
+                41.0,
+                29.0,
+                forecast_payload=forecast_payload,
+            )
+
+    forecast_slice.assert_not_called()
+    assert result.aqi_value == 22
+    assert result.visibility_meters == 7000.0
+
+
+@pytest.mark.asyncio
 async def test_fetch_lifestyle_indices_returns_degraded_when_both_upstream_fail():
     async def _fail(*_args, **_kwargs):
         raise TimeoutError("upstream timeout")
