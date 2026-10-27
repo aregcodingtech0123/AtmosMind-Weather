@@ -16,7 +16,16 @@ from zoneinfo import ZoneInfo
 import httpx
 from pydantic import BaseModel, Field
 
-from redis_cache import get_cached_air_quality, set_cached_air_quality
+from cache_meta import CacheMeta, DataStatus, ResponseMeta
+from circuit_breaker import BREAKER_AIR_QUALITY, get_breaker
+from metrics import is_circuit_breaker_enabled
+from redis_cache import (
+    get_cached_air_quality,
+    get_cached_air_quality_with_meta,
+    set_cached_air_quality,
+    utc_fetched_at_now,
+)
+from resilience import optional_response_meta, swr_enabled
 from logging_config import log_outbound_api
 
 logger = logging.getLogger(__name__)
@@ -42,6 +51,7 @@ class PollenMetrics(BaseModel):
 class LifestyleIndicesResponse(BaseModel):
     latitude: float
     longitude: float
+    meta: ResponseMeta | None = None
     timezone: str | None = None
     observed_at: str | None = None
     european_aqi: int | None = None
@@ -289,22 +299,46 @@ async def _fetch_air_quality_slice(
     Raises on timeout or upstream HTTP errors so ``gather(..., return_exceptions=True)``
     can degrade AQI / UV / pollen fields without failing the whole endpoint.
     """
-    cached = get_cached_air_quality(redis_client, latitude, longitude)
-    if cached is not None:
-        logger.debug("Air quality cache hit for (%s, %s)", latitude, longitude)
-        return cached
+    aq_meta: CacheMeta | None = None
+    if swr_enabled() and redis_client:
+        cached, aq_meta = get_cached_air_quality_with_meta(redis_client, latitude, longitude)
+        if aq_meta.data_status == DataStatus.FRESH and cached is not None:
+            logger.debug("Air quality cache hit (fresh) for (%s, %s)", latitude, longitude)
+            return cached
+        stale_payload = cached if aq_meta.data_status == DataStatus.STALE else None
+    else:
+        cached = get_cached_air_quality(redis_client, latitude, longitude)
+        if cached is not None:
+            logger.debug("Air quality cache hit for (%s, %s)", latitude, longitude)
+            return cached
+        stale_payload = None
 
-    payload = await asyncio.wait_for(
-        _open_meteo_get(
-            client,
-            AIR_QUALITY_URL,
-            params,
-            service="open-meteo-air-quality",
-            lat=latitude,
-            lon=longitude,
-        ),
-        timeout=AIR_QUALITY_TIMEOUT_SECONDS,
-    )
+    breaker = get_breaker(BREAKER_AIR_QUALITY)
+    if is_circuit_breaker_enabled() and not breaker.acquire_upstream_slot(permit_probe=True):
+        if stale_payload is not None:
+            return stale_payload
+        raise httpx.HTTPError("air quality upstream blocked")
+
+    try:
+        payload = await asyncio.wait_for(
+            _open_meteo_get(
+                client,
+                AIR_QUALITY_URL,
+                params,
+                service="open-meteo-air-quality",
+                lat=latitude,
+                lon=longitude,
+            ),
+            timeout=AIR_QUALITY_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        if is_circuit_breaker_enabled():
+            breaker.record_failure(count=True)
+        if stale_payload is not None:
+            return stale_payload
+        raise
+    if is_circuit_breaker_enabled():
+        breaker.record_success()
     set_cached_air_quality(redis_client, latitude, longitude, payload)
     return payload
 
@@ -443,6 +477,13 @@ async def fetch_lifestyle_indices(
     else:
         forecast_data = forecast_result
 
-    return lifestyle_from_forecast_and_air(
+    response = lifestyle_from_forecast_and_air(
         forecast_data, air_result, latitude, longitude
     )
+    if swr_enabled() and redis_client:
+        _, aq_meta = get_cached_air_quality_with_meta(redis_client, latitude, longitude)
+        if aq_meta.data_status != DataStatus.UNAVAILABLE:
+            response.meta = optional_response_meta(aq_meta)
+        elif isinstance(air_result, Exception):
+            response.meta = ResponseMeta(data_status="unavailable")
+    return response

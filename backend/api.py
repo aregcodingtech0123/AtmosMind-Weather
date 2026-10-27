@@ -11,7 +11,7 @@ import requests
 import asyncio
 from contextlib import asynccontextmanager
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,14 +27,22 @@ from ai_advice import get_city_advice, get_forecast_summary
 from langchain_agent import AtmosMindAgent, create_atmosmind_agent
 
 from database import get_connection, init_schema, fetch_popular_for_redis, search_by_prefix, get_coordinates_by_display_name
+from cache_meta import CacheMeta, DataStatus, ResponseMeta
 from redis_cache import (
     load_popular_cities_into_redis,
     search_redis,
     get_cached_weather,
+    get_cached_weather_with_meta,
     set_cached_weather,
     get_cached_weather_by_city,
+    get_cached_weather_by_city_with_meta,
     set_cached_weather_by_city,
+    utc_fetched_at_now,
+    warn_deprecated_ttl_env_at_startup,
 )
+from circuit_breaker import BREAKER_FORECAST, get_breaker
+from metrics import is_circuit_breaker_enabled, is_stale_while_revalidate_enabled
+from resilience import UPSTREAM_UNAVAILABLE, optional_response_meta, swr_enabled
 from security import (
     RATE_LIMIT_MAX_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
@@ -113,13 +121,21 @@ def _prewarm_weather_cache(popular: list[dict]) -> None:
         logger.info("Weather cache pre-warm: all %d candidates already cached.", len(candidates))
         return
 
+    if is_circuit_breaker_enabled() and get_breaker(BREAKER_FORECAST).is_open_for_background():
+        logger.info("Weather cache pre-warm skipped: forecast circuit breaker is open.")
+        return
+
     logger.info(
         "Pre-warming weather cache for %d cities (%d cache misses, chunked batch API)…",
         len(candidates),
         len(misses),
     )
     coords = [(lat, lon) for _city, lat, lon in misses]
-    batch_results = get_current_weather_batch_by_coords(coords)
+    batch_results = get_current_weather_batch_by_coords(
+        coords,
+        count_cb_failures=False,
+        permit_cb_probe=False,
+    )
 
     warmed = 0
     for (city, lat, lon), data in zip(misses, batch_results):
@@ -174,6 +190,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Startup: external DNS warmup failed: %s", e)
 
     configure_langsmith_tracing()
+    warn_deprecated_ttl_env_at_startup()
 
     # Fire-and-forget: pre-warm weather for popular cities in the background
     # so the main server starts instantly and the cache fills up concurrently.
@@ -790,6 +807,7 @@ class BatchWeatherItem(BaseModel):
     condition: str | None = None
     weather_code: int | None = None
     error: str | None = None
+    meta: ResponseMeta | None = None
 
 
 class BatchWeatherResponse(BaseModel):
@@ -813,14 +831,51 @@ def _resolve_coords(city_display: str):
     return None
 
 
-def _batch_item_from_payload(city_display: str, data: dict) -> BatchWeatherItem:
+def _batch_item_from_payload(
+    city_display: str,
+    data: dict,
+    *,
+    cache_meta: CacheMeta | None = None,
+) -> BatchWeatherItem:
     if "error" in data:
-        return BatchWeatherItem(city=city_display, error=data["error"])
+        err = data["error"]
+        if swr_enabled() and err == UPSTREAM_UNAVAILABLE:
+            return BatchWeatherItem(
+                city=city_display,
+                temperature=None,
+                error=UPSTREAM_UNAVAILABLE,
+                meta=ResponseMeta(data_status="unavailable"),
+            )
+        return BatchWeatherItem(city=city_display, error=err)
     return BatchWeatherItem(
         city=city_display,
         temperature=data.get("temperature"),
         condition=data.get("condition"),
         weather_code=data.get("weather_code"),
+        meta=optional_response_meta(cache_meta),
+    )
+
+
+def _batch_item_from_cached(
+    city_display: str, payload: dict[str, Any], cache_meta: CacheMeta
+) -> BatchWeatherItem:
+    return BatchWeatherItem(
+        city=city_display,
+        temperature=payload.get("temperature"),
+        condition=payload.get("condition"),
+        weather_code=payload.get("weather_code"),
+        meta=optional_response_meta(cache_meta),
+    )
+
+
+def _batch_item_unavailable(city_display: str) -> BatchWeatherItem:
+    if not swr_enabled():
+        return BatchWeatherItem(city=city_display, error=GENERIC_ERROR_MESSAGE)
+    return BatchWeatherItem(
+        city=city_display,
+        temperature=None,
+        error=UPSTREAM_UNAVAILABLE,
+        meta=ResponseMeta(data_status="unavailable"),
     )
 
 
@@ -898,6 +953,7 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
     r = _get_redis()
     results_by_city: dict[str, BatchWeatherItem] = {}
     to_fetch: list[tuple[str, float, float]] = []
+    stale_by_city: dict[str, tuple[dict[str, Any], CacheMeta]] = {}
     name_only: list[str] = []
 
     for city_display in cities:
@@ -907,6 +963,18 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
             continue
 
         lat, lon = coords
+        if swr_enabled() and r:
+            cached, cache_meta = get_cached_weather_with_meta(r, lat, lon)
+            if cache_meta.data_status == DataStatus.FRESH and cached is not None:
+                results_by_city[city_display] = _batch_item_from_cached(
+                    city_display, cached, cache_meta
+                )
+                continue
+            if cache_meta.data_status == DataStatus.STALE and cached is not None:
+                stale_by_city[city_display] = (cached, cache_meta)
+            to_fetch.append((city_display, lat, lon))
+            continue
+
         cached = get_cached_weather(r, lat, lon) if r else None
         if cached is not None:
             results_by_city[city_display] = BatchWeatherItem(
@@ -922,13 +990,32 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
         coords = [(lat, lon) for _city, lat, lon in to_fetch]
         batch_data = get_current_weather_batch_by_coords(coords)
         for (city_display, lat, lon), data in zip(to_fetch, batch_data):
-            if "error" not in data and r:
-                payload = {
-                    "temperature": data.get("temperature"),
-                    "condition": data.get("condition"),
-                    "weather_code": data.get("weather_code"),
-                }
-                set_cached_weather(r, lat, lon, payload)
+            if "error" not in data:
+                if r:
+                    payload = {
+                        "temperature": data.get("temperature"),
+                        "condition": data.get("condition"),
+                        "weather_code": data.get("weather_code"),
+                    }
+                    set_cached_weather(r, lat, lon, payload)
+                fresh_meta = CacheMeta(DataStatus.FRESH, utc_fetched_at_now())
+                results_by_city[city_display] = _batch_item_from_payload(
+                    city_display, data, cache_meta=fresh_meta
+                )
+                continue
+
+            stale_entry = stale_by_city.get(city_display)
+            if swr_enabled() and stale_entry is not None:
+                stale_payload, stale_meta = stale_entry
+                results_by_city[city_display] = _batch_item_from_cached(
+                    city_display, stale_payload, stale_meta
+                )
+                continue
+
+            if swr_enabled() and data.get("error") == UPSTREAM_UNAVAILABLE:
+                results_by_city[city_display] = _batch_item_unavailable(city_display)
+                continue
+
             results_by_city[city_display] = _batch_item_from_payload(city_display, data)
 
     for city_display in name_only:

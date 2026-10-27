@@ -34,7 +34,14 @@ from metrics import (
     record_upstream_429_request,
     record_upstream_5xx_attempt,
 )
-from redis_cache import get_cached_weather_detail, set_cached_weather_detail
+from cache_meta import CacheMeta, DataStatus, ResponseMeta
+from redis_cache import (
+    get_cached_weather_detail,
+    get_cached_weather_detail_with_meta,
+    set_cached_weather_detail,
+    utc_fetched_at_now,
+)
+from resilience import optional_response_meta, swr_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +95,7 @@ class WeatherDetailResponse(BaseModel):
     longitude: float
     weather: WeatherDetailWeather
     lifestyle_indices: LifestyleIndicesResponse
+    meta: ResponseMeta | None = None
 
 
 class ForecastUnavailableError(Exception):
@@ -401,12 +409,24 @@ async def fetch_weather_detail(
     lang = (language or "en").split("-")[0][:8]
 
     if redis_client is not None:
-        cached = get_cached_weather_detail(redis_client, latitude, longitude, lang, unit)
-        if cached is not None:
-            try:
-                return _response_from_cache(cached)
-            except Exception as exc:
-                logger.debug("Invalid weather detail cache entry, refetching: %s", exc)
+        if swr_enabled():
+            cached, cache_meta = get_cached_weather_detail_with_meta(
+                redis_client, latitude, longitude, lang, unit
+            )
+            if cache_meta.data_status == DataStatus.FRESH and cached is not None:
+                try:
+                    response = _response_from_cache(cached)
+                    response.meta = optional_response_meta(cache_meta)
+                    return response
+                except Exception as exc:
+                    logger.debug("Invalid weather detail cache entry, refetching: %s", exc)
+        else:
+            cached = get_cached_weather_detail(redis_client, latitude, longitude, lang, unit)
+            if cached is not None:
+                try:
+                    return _response_from_cache(cached)
+                except Exception as exc:
+                    logger.debug("Invalid weather detail cache entry, refetching: %s", exc)
 
     forecast_params = _detail_forecast_params(latitude, longitude, lang, unit)
     share_forecast = is_weather_detail_share_forecast_enabled()
@@ -428,17 +448,23 @@ async def fetch_weather_detail(
                     longitude,
                     exc,
                 )
-                if redis_client is not None:
+                if redis_client is not None and swr_enabled():
+                    stale, stale_meta = get_cached_weather_detail_with_meta(
+                        redis_client, latitude, longitude, lang, unit
+                    )
+                    if stale_meta.data_status == DataStatus.STALE and stale is not None:
+                        try:
+                            response = _response_from_cache(stale)
+                            response.meta = optional_response_meta(stale_meta)
+                            return response
+                        except Exception:
+                            pass
+                elif redis_client is not None:
                     stale = get_cached_weather_detail(
                         redis_client, latitude, longitude, lang, unit
                     )
                     if stale is not None:
                         try:
-                            logger.info(
-                                "Serving stale cached weather detail for (%s, %s)",
-                                latitude,
-                                longitude,
-                            )
                             return _response_from_cache(stale)
                         except Exception:
                             pass
@@ -457,17 +483,23 @@ async def fetch_weather_detail(
                     longitude,
                     forecast_result,
                 )
-                if redis_client is not None:
+                if redis_client is not None and swr_enabled():
+                    stale, stale_meta = get_cached_weather_detail_with_meta(
+                        redis_client, latitude, longitude, lang, unit
+                    )
+                    if stale_meta.data_status == DataStatus.STALE and stale is not None:
+                        try:
+                            response = _response_from_cache(stale)
+                            response.meta = optional_response_meta(stale_meta)
+                            return response
+                        except Exception:
+                            pass
+                elif redis_client is not None:
                     stale = get_cached_weather_detail(
                         redis_client, latitude, longitude, lang, unit
                     )
                     if stale is not None:
                         try:
-                            logger.info(
-                                "Serving stale cached weather detail for (%s, %s)",
-                                latitude,
-                                longitude,
-                            )
                             return _response_from_cache(stale)
                         except Exception:
                             pass
@@ -490,6 +522,9 @@ async def fetch_weather_detail(
         longitude=longitude,
         weather=weather,
         lifestyle_indices=lifestyle_indices,
+        meta=optional_response_meta(CacheMeta(DataStatus.FRESH, utc_fetched_at_now()))
+        if swr_enabled()
+        else None,
     )
 
     if redis_client is not None:

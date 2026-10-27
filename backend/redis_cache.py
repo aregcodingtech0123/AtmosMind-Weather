@@ -12,8 +12,14 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from cache_meta import CacheMeta, DataStatus, classify_fetched_at
 from logging_config import log_cache_event, log_cache_unavailable
-from metrics import record_cache_hit, record_cache_miss, record_cache_unavailable
+from metrics import (
+    is_stale_while_revalidate_enabled,
+    record_cache_hit,
+    record_cache_miss,
+    record_cache_unavailable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +147,11 @@ def search_redis(redis_client, prefix: str, limit: int = MAX_CACHE_RESULTS) -> l
         return []
 
 
-# ─── Cache TTL (env-driven; default 900s = legacy 15 min) ─────────────────────
+# ─── Cache TTL ───────────────────────────────────────────────────────────────
 
 
 def get_weather_ttl() -> int:
+    """Phase 1 SETEX TTL when SWR is disabled."""
     return int(os.getenv("WEATHER_TTL_SECONDS", "900"))
 
 
@@ -154,6 +161,71 @@ def get_weather_detail_ttl() -> int:
 
 def get_air_quality_ttl() -> int:
     return int(os.getenv("AIR_QUALITY_TTL_SECONDS", "900"))
+
+
+def get_weather_soft_ttl() -> int:
+    return int(os.getenv("WEATHER_SOFT_TTL_SECONDS", "1800"))
+
+
+def get_weather_hard_ttl() -> int:
+    return int(os.getenv("WEATHER_HARD_TTL_SECONDS", "7200"))
+
+
+def get_weather_detail_soft_ttl() -> int:
+    return int(os.getenv("WEATHER_DETAIL_SOFT_TTL_SECONDS", "1800"))
+
+
+def get_weather_detail_hard_ttl() -> int:
+    return int(os.getenv("WEATHER_DETAIL_HARD_TTL_SECONDS", "7200"))
+
+
+def get_air_quality_soft_ttl() -> int:
+    return int(os.getenv("AIR_QUALITY_SOFT_TTL_SECONDS", "3600"))
+
+
+def get_air_quality_hard_ttl() -> int:
+    return int(os.getenv("AIR_QUALITY_HARD_TTL_SECONDS", "21600"))
+
+
+def _weather_setex_ttl() -> int:
+    if is_stale_while_revalidate_enabled():
+        return get_weather_hard_ttl()
+    return get_weather_ttl()
+
+
+def _weather_detail_setex_ttl() -> int:
+    if is_stale_while_revalidate_enabled():
+        return get_weather_detail_hard_ttl()
+    return get_weather_detail_ttl()
+
+
+def _air_quality_setex_ttl() -> int:
+    if is_stale_while_revalidate_enabled():
+        return get_air_quality_hard_ttl()
+    return get_air_quality_ttl()
+
+
+_TTL_WARNED = False
+
+
+def warn_deprecated_ttl_env_at_startup() -> None:
+    """Log once if legacy TTL env vars are set while SWR is enabled."""
+    global _TTL_WARNED
+    if _TTL_WARNED or not is_stale_while_revalidate_enabled():
+        return
+    _TTL_WARNED = True
+    pairs = (
+        ("WEATHER_TTL_SECONDS", "WEATHER_SOFT_TTL_SECONDS / WEATHER_HARD_TTL_SECONDS"),
+        ("WEATHER_DETAIL_TTL_SECONDS", "WEATHER_DETAIL_SOFT/HARD_TTL_SECONDS"),
+        ("AIR_QUALITY_TTL_SECONDS", "AIR_QUALITY_SOFT/HARD_TTL_SECONDS"),
+    )
+    for legacy, new in pairs:
+        if os.getenv(legacy):
+            logger.warning(
+                "%s is ignored while ENABLE_STALE_WHILE_REVALIDATE=true; use %s",
+                legacy,
+                new,
+            )
 
 
 CACHE_ENVELOPE_SENTINEL = "__atmosmind__"
@@ -180,29 +252,53 @@ def _decode_raw_cache_bytes(raw: Any) -> Any | None:
         return None
 
 
-def _unwrap_stored_cache_payload(
+def _read_and_classify(
     parsed: Any,
     *,
     cache: str,
     cache_kind: str,
+    soft_ttl_seconds: int,
+    hard_ttl_seconds: int,
     lat: float | None = None,
     lon: float | None = None,
-) -> Optional[dict[str, Any]]:
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
     if not isinstance(parsed, dict):
         _emit_cache_miss(cache, cache_kind, lat=lat, lon=lon)
-        return None
+        return None, CacheMeta(DataStatus.UNAVAILABLE, None)
+
+    swr = is_stale_while_revalidate_enabled()
 
     if parsed.get(CACHE_ENVELOPE_SENTINEL) == CACHE_ENVELOPE_VERSION:
         data = parsed.get("data")
         if not isinstance(data, dict):
             _emit_cache_miss(cache, cache_kind, lat=lat, lon=lon)
-            return None
-        _emit_cache_hit(cache, cache_kind, lat=lat, lon=lon)
-        return data
+            return None, CacheMeta(DataStatus.UNAVAILABLE, None)
+        fetched_at = parsed.get("fetched_at")
+        if isinstance(fetched_at, str):
+            fetched_at_str: str | None = fetched_at
+        else:
+            fetched_at_str = None
 
-    # Legacy bare dict (pre-envelope rollout). Removable after Phase 2 SWR is stable.
+        if swr:
+            status = classify_fetched_at(
+                fetched_at_str,
+                soft_ttl_seconds=soft_ttl_seconds,
+                hard_ttl_seconds=hard_ttl_seconds,
+            )
+            if status == DataStatus.UNAVAILABLE:
+                _emit_cache_miss(cache, cache_kind, lat=lat, lon=lon)
+                return None, CacheMeta(DataStatus.UNAVAILABLE, fetched_at_str)
+            _emit_cache_hit(cache, cache_kind, lat=lat, lon=lon)
+            return data, CacheMeta(status, fetched_at_str)
+
+        _emit_cache_hit(cache, cache_kind, lat=lat, lon=lon)
+        return data, CacheMeta(DataStatus.FRESH, fetched_at_str)
+
+    # Legacy bare dict. SWR on: stale, fetched_at unknown — remove after envelope rollout window.
     _emit_cache_hit(cache, cache_kind, lat=lat, lon=lon)
-    return parsed
+    if swr:
+        return parsed, CacheMeta(DataStatus.STALE, None, is_legacy_bare_dict=True)
+    return parsed, CacheMeta(DataStatus.FRESH, None)
 
 
 def _read_cached_payload(
@@ -211,27 +307,64 @@ def _read_cached_payload(
     *,
     cache: str,
     cache_kind: str,
+    soft_ttl_seconds: int,
+    hard_ttl_seconds: int,
     lat: float | None = None,
     lon: float | None = None,
 ) -> Optional[dict[str, Any]]:
+    payload, meta = _read_cached_with_meta(
+        redis_client,
+        key,
+        cache=cache,
+        cache_kind=cache_kind,
+        soft_ttl_seconds=soft_ttl_seconds,
+        hard_ttl_seconds=hard_ttl_seconds,
+        lat=lat,
+        lon=lon,
+    )
+    if meta.data_status == DataStatus.UNAVAILABLE:
+        return None
+    return payload
+
+
+def _read_cached_with_meta(
+    redis_client,
+    key: str,
+    *,
+    cache: str,
+    cache_kind: str,
+    soft_ttl_seconds: int,
+    hard_ttl_seconds: int,
+    lat: float | None = None,
+    lon: float | None = None,
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
+    if not redis_client:
+        return None, CacheMeta(DataStatus.UNAVAILABLE, None)
+
     try:
         raw = redis_client.get(key)
     except Exception as e:
         _emit_cache_unavailable(cache, cache_kind, lat=lat, lon=lon)
         logger.debug("%s failed: %s", cache_kind, e)
-        return None
+        return None, CacheMeta(DataStatus.UNAVAILABLE, None)
 
     if raw is None:
         _emit_cache_miss(cache, cache_kind, lat=lat, lon=lon)
-        return None
+        return None, CacheMeta(DataStatus.UNAVAILABLE, None)
 
     parsed = _decode_raw_cache_bytes(raw)
     if parsed is None:
         _emit_cache_miss(cache, cache_kind, lat=lat, lon=lon)
-        return None
+        return None, CacheMeta(DataStatus.UNAVAILABLE, None)
 
-    return _unwrap_stored_cache_payload(
-        parsed, cache=cache, cache_kind=cache_kind, lat=lat, lon=lon
+    return _read_and_classify(
+        parsed,
+        cache=cache,
+        cache_kind=cache_kind,
+        soft_ttl_seconds=soft_ttl_seconds,
+        hard_ttl_seconds=hard_ttl_seconds,
+        lat=lat,
+        lon=lon,
     )
 
 
@@ -269,6 +402,24 @@ def get_cached_weather(redis_client, lat: float, lon: float) -> Optional[dict[st
         key,
         cache="weather",
         cache_kind="weather_current",
+        soft_ttl_seconds=get_weather_soft_ttl(),
+        hard_ttl_seconds=get_weather_hard_ttl(),
+        lat=lat,
+        lon=lon,
+    )
+
+
+def get_cached_weather_with_meta(
+    redis_client, lat: float, lon: float
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
+    key = _weather_cache_key(lat, lon)
+    return _read_cached_with_meta(
+        redis_client,
+        key,
+        cache="weather",
+        cache_kind="weather_current",
+        soft_ttl_seconds=get_weather_soft_ttl(),
+        hard_ttl_seconds=get_weather_hard_ttl(),
         lat=lat,
         lon=lon,
     )
@@ -286,7 +437,11 @@ def set_cached_weather(
         return
     key = _weather_cache_key(lat, lon)
     _write_cached_payload(
-        redis_client, key, data, ttl if ttl is not None else get_weather_ttl(), "set_cached_weather"
+        redis_client,
+        key,
+        data,
+        ttl if ttl is not None else _weather_setex_ttl(),
+        "set_cached_weather",
     )
 
 
@@ -300,7 +455,28 @@ def get_cached_weather_by_city(redis_client, city_display: str) -> Optional[dict
     if not redis_client:
         return None
     key = _city_cache_key(city_display)
-    return _read_cached_payload(redis_client, key, cache="weather", cache_kind="weather_city")
+    return _read_cached_payload(
+        redis_client,
+        key,
+        cache="weather",
+        cache_kind="weather_city",
+        soft_ttl_seconds=get_weather_soft_ttl(),
+        hard_ttl_seconds=get_weather_hard_ttl(),
+    )
+
+
+def get_cached_weather_by_city_with_meta(
+    redis_client, city_display: str
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
+    key = _city_cache_key(city_display)
+    return _read_cached_with_meta(
+        redis_client,
+        key,
+        cache="weather",
+        cache_kind="weather_city",
+        soft_ttl_seconds=get_weather_soft_ttl(),
+        hard_ttl_seconds=get_weather_hard_ttl(),
+    )
 
 
 def set_cached_weather_by_city(
@@ -317,7 +493,7 @@ def set_cached_weather_by_city(
         redis_client,
         key,
         data,
-        ttl if ttl is not None else get_weather_ttl(),
+        ttl if ttl is not None else _weather_setex_ttl(),
         "set_cached_weather_by_city",
     )
 
@@ -348,6 +524,28 @@ def get_cached_weather_detail(
         key,
         cache="weather",
         cache_kind="weather_detail",
+        soft_ttl_seconds=get_weather_detail_soft_ttl(),
+        hard_ttl_seconds=get_weather_detail_hard_ttl(),
+        lat=lat,
+        lon=lon,
+    )
+
+
+def get_cached_weather_detail_with_meta(
+    redis_client,
+    lat: float,
+    lon: float,
+    language: str,
+    unit: str,
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
+    key = _weather_detail_cache_key(lat, lon, language, unit)
+    return _read_cached_with_meta(
+        redis_client,
+        key,
+        cache="weather",
+        cache_kind="weather_detail",
+        soft_ttl_seconds=get_weather_detail_soft_ttl(),
+        hard_ttl_seconds=get_weather_detail_hard_ttl(),
         lat=lat,
         lon=lon,
     )
@@ -370,7 +568,7 @@ def set_cached_weather_detail(
         redis_client,
         key,
         data,
-        ttl if ttl is not None else get_weather_detail_ttl(),
+        ttl if ttl is not None else _weather_detail_setex_ttl(),
         "set_cached_weather_detail",
     )
 
@@ -393,6 +591,24 @@ def get_cached_air_quality(redis_client, lat: float, lon: float) -> Optional[dic
         key,
         cache="aq",
         cache_kind="air_quality",
+        soft_ttl_seconds=get_air_quality_soft_ttl(),
+        hard_ttl_seconds=get_air_quality_hard_ttl(),
+        lat=lat,
+        lon=lon,
+    )
+
+
+def get_cached_air_quality_with_meta(
+    redis_client, lat: float, lon: float
+) -> tuple[Optional[dict[str, Any]], CacheMeta]:
+    key = _air_quality_cache_key(lat, lon)
+    return _read_cached_with_meta(
+        redis_client,
+        key,
+        cache="aq",
+        cache_kind="air_quality",
+        soft_ttl_seconds=get_air_quality_soft_ttl(),
+        hard_ttl_seconds=get_air_quality_hard_ttl(),
         lat=lat,
         lon=lon,
     )
@@ -413,6 +629,6 @@ def set_cached_air_quality(
         redis_client,
         key,
         data,
-        ttl if ttl is not None else get_air_quality_ttl(),
+        ttl if ttl is not None else _air_quality_setex_ttl(),
         "set_cached_air_quality",
     )

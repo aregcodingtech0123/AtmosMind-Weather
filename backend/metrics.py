@@ -31,6 +31,14 @@ def is_weather_detail_share_forecast_enabled() -> bool:
     return _is_truthy_env("WEATHER_DETAIL_SHARE_FORECAST", "false")
 
 
+def is_stale_while_revalidate_enabled() -> bool:
+    return _is_truthy_env("ENABLE_STALE_WHILE_REVALIDATE", "false")
+
+
+def is_circuit_breaker_enabled() -> bool:
+    return _is_truthy_env("ENABLE_CIRCUIT_BREAKER", "false")
+
+
 def _safe_increment(counter_name: str) -> None:
     """Counters must never break cache getters or upstream fetches."""
     try:
@@ -104,7 +112,7 @@ def snapshot() -> dict[str, Any]:
     total_lookups = hits + misses
     hit_rate = round(hits / total_lookups, 4) if total_lookups > 0 else 0.0
 
-    return {
+    out: dict[str, Any] = {
         "scope": "process",
         "uptime_seconds": int(time.monotonic() - _START_MONOTONIC),
         "cache": {
@@ -124,5 +132,20 @@ def snapshot() -> dict[str, Any]:
         "flags": {
             "ENABLE_RESILIENCE_ENDPOINT": is_resilience_endpoint_enabled(),
             "WEATHER_DETAIL_SHARE_FORECAST": is_weather_detail_share_forecast_enabled(),
+            "ENABLE_STALE_WHILE_REVALIDATE": is_stale_while_revalidate_enabled(),
+            "ENABLE_CIRCUIT_BREAKER": is_circuit_breaker_enabled(),
         },
     }
+
+    if is_resilience_endpoint_enabled():
+        try:
+            from circuit_breaker import air_quality_breaker_snapshot, forecast_breaker_snapshot
+
+            out["circuit_breakers"] = [
+                forecast_breaker_snapshot(),
+                air_quality_breaker_snapshot(),
+            ]
+        except Exception:
+            pass
+
+    return out

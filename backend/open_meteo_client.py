@@ -13,11 +13,14 @@ from typing import Any
 import requests
 
 from logging_config import log_outbound_api, log_upstream_status_event
+from circuit_breaker import BREAKER_FORECAST, get_breaker
 from metrics import (
+    is_circuit_breaker_enabled,
     record_upstream_429_attempt,
     record_upstream_429_request,
     record_upstream_5xx_attempt,
 )
+from resilience import UPSTREAM_UNAVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,14 @@ MAX_RETRIES = max(1, int(os.getenv("OPEN_METEO_MAX_RETRIES", "3")))
 RETRY_BASE_DELAY_SECONDS = max(0.1, float(os.getenv("OPEN_METEO_RETRY_BASE_DELAY_SECONDS", "1.0")))
 
 _RATE_LIMIT_ERROR = "Unable to fetch weather data at the moment. Please try again later."
+
+
+class UpstreamBlockedError(Exception):
+    """Forecast circuit breaker is open or a probe is in flight."""
+
+    def __init__(self, retry_after_seconds: int = 60) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__("upstream blocked by circuit breaker")
 
 
 def _parse_forecast_current(fc_data: dict[str, Any]) -> dict[str, Any]:
@@ -73,7 +84,28 @@ def _build_batch_forecast_url(lats: list[float], lons: list[float]) -> str:
     return f"{FORECAST_URL}?latitude={lat_str}&longitude={lon_str}&{CURRENT_PARAMS}"
 
 
-def _get_json_with_retry(url: str, *, locations: int | None = None) -> Any:
+def _record_forecast_breaker_success() -> None:
+    if is_circuit_breaker_enabled():
+        get_breaker(BREAKER_FORECAST).record_success()
+
+
+def _record_forecast_breaker_failure(*, count: bool) -> None:
+    if is_circuit_breaker_enabled():
+        get_breaker(BREAKER_FORECAST).record_failure(count=count)
+
+
+def _get_json_with_retry(
+    url: str,
+    *,
+    locations: int | None = None,
+    count_cb_failures: bool = True,
+    permit_cb_probe: bool = True,
+) -> Any:
+    breaker = get_breaker(BREAKER_FORECAST)
+    if is_circuit_breaker_enabled():
+        if not breaker.acquire_upstream_slot(permit_probe=permit_cb_probe):
+            raise UpstreamBlockedError(retry_after_seconds=breaker.retry_after_seconds())
+
     last_error: Exception | None = None
     saw_429 = False
     try:
@@ -116,6 +148,7 @@ def _get_json_with_retry(url: str, *, locations: int | None = None) -> Any:
                     status_code=status_code,
                     locations=locations,
                 )
+                _record_forecast_breaker_success()
                 return response.json()
             except requests.RequestException as exc:
                 last_error = exc
@@ -149,6 +182,8 @@ def _get_json_with_retry(url: str, *, locations: int | None = None) -> Any:
             record_upstream_429_request()
 
     assert last_error is not None
+    if count_cb_failures:
+        _record_forecast_breaker_failure(count=True)
     raise last_error
 
 
@@ -162,6 +197,9 @@ def _normalize_batch_payload(payload: Any) -> list[dict[str, Any]]:
 
 def get_current_weather_batch_by_coords(
     coords: list[tuple[float, float]],
+    *,
+    count_cb_failures: bool = True,
+    permit_cb_probe: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Fetch current weather for many coordinates using chunked Open-Meteo batch API.
@@ -183,7 +221,20 @@ def get_current_weather_batch_by_coords(
         url = _build_batch_forecast_url(lats, lons)
 
         try:
-            payload = _get_json_with_retry(url, locations=len(chunk))
+            payload = _get_json_with_retry(
+                url,
+                locations=len(chunk),
+                count_cb_failures=count_cb_failures,
+                permit_cb_probe=permit_cb_probe,
+            )
+        except UpstreamBlockedError as exc:
+            logger.warning(
+                "Batch forecast blocked by circuit breaker (chunk starting %d)",
+                chunk_start,
+            )
+            for offset in range(len(chunk)):
+                results[chunk_start + offset] = {"error": UPSTREAM_UNAVAILABLE}
+            continue
         except requests.RequestException as exc:
             logger.warning(
                 "Batch forecast failed for %d coordinates (chunk starting %d): %s",
@@ -208,10 +259,20 @@ def get_current_weather_batch_by_coords(
     return results
 
 
-def get_current_weather_by_coords(lat: float, lon: float) -> dict[str, Any]:
+def get_current_weather_by_coords(
+    lat: float,
+    lon: float,
+    *,
+    count_cb_failures: bool = True,
+    permit_cb_probe: bool = True,
+) -> dict[str, Any]:
     """Fetch current weather for a single coordinate pair (batch API under the hood)."""
     try:
-        return get_current_weather_batch_by_coords([(lat, lon)])[0]
+        return get_current_weather_batch_by_coords(
+            [(lat, lon)],
+            count_cb_failures=count_cb_failures,
+            permit_cb_probe=permit_cb_probe,
+        )[0]
     except Exception as exc:
         logger.exception("Unexpected forecast error for coords (%s, %s): %s", lat, lon, exc)
         return {"error": GENERIC_ERROR}
