@@ -11,6 +11,15 @@ from security import ChatSafetyVerdict, clear_memory_rate_limits
 
 
 @pytest.fixture(autouse=True)
+def _clean_resilience_env(monkeypatch):
+    """Phase 1/2 tests must not inherit production shell env for SWR/CB flags."""
+    monkeypatch.delenv("ENABLE_STALE_WHILE_REVALIDATE", raising=False)
+    monkeypatch.delenv("ENABLE_CIRCUIT_BREAKER", raising=False)
+    monkeypatch.delenv("ENABLE_RESILIENCE_ENDPOINT", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _clear_rate_limit_store():
     """Isolate rate-limit state between tests."""
     clear_memory_rate_limits()

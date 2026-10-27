@@ -196,6 +196,13 @@ class AsyncCircuitBreaker(_BreakerCore):
         async with self._lock:
             self._record_failure_unlocked(count=count, now=time.monotonic())
 
+    def is_open_for_background_sync(self) -> bool:
+        """Sync peek for refresh-header guard (no event-loop await)."""
+        now = time.monotonic()
+        if self._state == "open" and now - self._opened_at >= _open_seconds():
+            return False
+        return self._state == "open"
+
 
 # Backward-compatible alias
 CircuitBreaker = SyncCircuitBreaker

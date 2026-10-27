@@ -251,6 +251,8 @@ async def fetch_air_quality_for_coords(
     redis_client: Any,
     latitude: float,
     longitude: float,
+    *,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     """Outbound air-quality fetch for a coordinate pair (Redis cache + Open-Meteo AQ API)."""
     return await _fetch_air_quality_slice(
@@ -259,6 +261,7 @@ async def fetch_air_quality_for_coords(
         latitude,
         longitude,
         _air_quality_params(latitude, longitude),
+        force_refresh=force_refresh,
     )
 
 
@@ -292,6 +295,8 @@ async def _fetch_air_quality_slice(
     latitude: float,
     longitude: float,
     params: dict[str, Any],
+    *,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     """
     Air quality slice with Redis cache (15 min) and a strict 3 s outbound timeout.
@@ -302,10 +307,14 @@ async def _fetch_air_quality_slice(
     aq_meta: CacheMeta | None = None
     if swr_enabled() and redis_client:
         cached, aq_meta = get_cached_air_quality_with_meta(redis_client, latitude, longitude)
-        if aq_meta.data_status == DataStatus.FRESH and cached is not None:
+        if (
+            not force_refresh
+            and aq_meta.data_status == DataStatus.FRESH
+            and cached is not None
+        ):
             logger.debug("Air quality cache hit (fresh) for (%s, %s)", latitude, longitude)
             return cached
-        stale_payload = cached if aq_meta.data_status == DataStatus.STALE else None
+        stale_payload = cached if cached is not None else None
     else:
         cached = get_cached_air_quality(redis_client, latitude, longitude)
         if cached is not None:
@@ -427,6 +436,7 @@ async def fetch_lifestyle_indices(
     longitude: float,
     redis_client: Any = None,
     forecast_payload: dict[str, Any] | None = None,
+    force_refresh: bool = False,
 ) -> LifestyleIndicesResponse:
     """
     Parallel fetch: forecast (visibility, dew point) + air quality (AQI, UV, pollen).
@@ -462,7 +472,9 @@ async def fetch_lifestyle_indices(
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         forecast_result, air_result = await asyncio.gather(
             _fetch_forecast_slice(client, forecast_params),
-            fetch_air_quality_for_coords(client, redis_client, latitude, longitude),
+            fetch_air_quality_for_coords(
+                client, redis_client, latitude, longitude, force_refresh=force_refresh
+            ),
             return_exceptions=True,
         )
 

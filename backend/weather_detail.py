@@ -399,6 +399,7 @@ async def fetch_weather_detail(
     language: str = "en",
     unit: Literal["metric", "imperial"] = "metric",
     redis_client: Any = None,
+    force_refresh: bool = False,
 ) -> WeatherDetailResponse:
     """
     Concurrent city-detail fetch: full forecast JSON + lifestyle indices.
@@ -413,7 +414,11 @@ async def fetch_weather_detail(
             cached, cache_meta = get_cached_weather_detail_with_meta(
                 redis_client, latitude, longitude, lang, unit
             )
-            if cache_meta.data_status == DataStatus.FRESH and cached is not None:
+            if (
+                not force_refresh
+                and cache_meta.data_status == DataStatus.FRESH
+                and cached is not None
+            ):
                 try:
                     response = _response_from_cache(cached)
                     response.meta = optional_response_meta(cache_meta)

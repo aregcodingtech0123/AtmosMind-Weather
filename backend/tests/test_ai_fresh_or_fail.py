@@ -66,7 +66,12 @@ def test_stale_cache_upstream_fail_returns_503_no_temperature(client_with_redis,
     )
     assert resp.status_code == 503
     body = resp.json()
-    assert body["detail"]["error"] == "data_unavailable"
+    detail = body["detail"]
+    assert detail["error"] == "data_unavailable"
+    assert isinstance(detail["retry_after_seconds"], int)
+    assert "temperature" not in detail
+    assert "condition" not in detail
+    assert "temp_c" not in detail
     assert "99" not in json.dumps(body)
 
 
@@ -144,4 +149,42 @@ def test_cb_open_no_cache_503_retry_after(client_with_redis, monkeypatch):
     )
     assert resp.status_code == 503
     assert resp.json()["detail"]["retry_after_seconds"] >= 1
+    reset_breakers_for_tests()
+
+
+def test_stale_cache_cb_open_returns_503_not_stale_numbers(client_with_redis, monkeypatch):
+    """Stale cache + CB open: AI must not accept stale; upstream blocked → 503."""
+    client, redis = client_with_redis
+    monkeypatch.setenv("ENABLE_CIRCUIT_BREAKER", "true")
+    monkeypatch.setenv("CB_FAILURE_THRESHOLD", "1")
+    from circuit_breaker import BREAKER_FORECAST, get_sync_breaker, reset_breakers_for_tests
+
+    reset_breakers_for_tests()
+    b = get_sync_breaker(BREAKER_FORECAST)
+    b.acquire_upstream_slot(permit_probe=True)
+    b.record_failure(count=True)
+
+    redis.get.return_value = _stale_envelope(88.0).encode()
+    monkeypatch.setattr(api, "_resolve_coords", lambda _c: (41.0, 29.0))
+    monkeypatch.setattr(
+        "ai_fresh_context.get_current_weather_by_coords",
+        lambda *a, **k: {"error": "upstream_unavailable"},
+    )
+
+    resp = client.post(
+        "/api/chat",
+        json={
+            "messages": [{"role": "user", "content": "hello"}],
+            "language": "en",
+            "unit": "metric",
+            "city_name": "Istanbul",
+            "latitude": 41.0,
+            "longitude": 29.0,
+        },
+    )
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    assert detail["error"] == "data_unavailable"
+    assert "temperature" not in detail
+    assert "88" not in json.dumps(resp.json())
     reset_breakers_for_tests()

@@ -48,7 +48,12 @@ from ai_fresh_context import (
     weather_context_to_summary,
 )
 from metrics import is_circuit_breaker_enabled, is_stale_while_revalidate_enabled
-from resilience import UPSTREAM_UNAVAILABLE, optional_response_meta, swr_enabled
+from resilience import (
+    UPSTREAM_UNAVAILABLE,
+    is_force_refresh_request,
+    optional_response_meta,
+    swr_enabled,
+)
 from security import (
     RATE_LIMIT_MAX_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
@@ -1023,6 +1028,7 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
         return BatchWeatherResponse(results=[], temperatures={})
 
     r = _get_redis()
+    force_refresh = is_force_refresh_request(request)
     results_by_city: dict[str, BatchWeatherItem] = {}
     to_fetch: list[tuple[str, float, float]] = []
     stale_by_city: dict[str, tuple[dict[str, Any], CacheMeta]] = {}
@@ -1037,12 +1043,18 @@ async def weather_batch(req: BatchWeatherRequest, request: Request):
         lat, lon = coords
         if swr_enabled() and r:
             cached, cache_meta = get_cached_weather_with_meta(r, lat, lon)
-            if cache_meta.data_status == DataStatus.FRESH and cached is not None:
+            if (
+                not force_refresh
+                and cache_meta.data_status == DataStatus.FRESH
+                and cached is not None
+            ):
                 results_by_city[city_display] = _batch_item_from_cached(
                     city_display, cached, cache_meta
                 )
                 continue
             if cache_meta.data_status == DataStatus.STALE and cached is not None:
+                stale_by_city[city_display] = (cached, cache_meta)
+            elif force_refresh and cached is not None:
                 stale_by_city[city_display] = (cached, cache_meta)
             to_fetch.append((city_display, lat, lon))
             continue
@@ -1130,6 +1142,7 @@ async def weather_detail_endpoint(req: WeatherDetailRequest, request: Request):
             language=req.language,
             unit=req.unit,
             redis_client=_get_redis(),
+            force_refresh=is_force_refresh_request(request),
         )
     except ForecastUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Weather forecast temporarily unavailable.") from exc
@@ -1158,5 +1171,10 @@ async def lifestyle_indices_endpoint(
     Fetches Open-Meteo Forecast + Air Quality APIs in parallel for the given coordinates.
     """
     await enforce_rate_limit(request, "lifestyle-indices", _get_redis())
-    return await fetch_lifestyle_indices(latitude, longitude, redis_client=_get_redis())
+    return await fetch_lifestyle_indices(
+        latitude,
+        longitude,
+        redis_client=_get_redis(),
+        force_refresh=is_force_refresh_request(request, upstream="air_quality"),
+    )
 

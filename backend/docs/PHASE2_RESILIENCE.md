@@ -42,6 +42,14 @@ Single probe at a time. Concurrent requests during probing **defer upstream imme
 
 AQ portion only (AQ Redis cache). Forecast slice (visibility/dew) has no cache — fresh-or-fail; forecast fail → AQ-only with forecast fields null (today’s degradation).
 
+## Weather detail `meta`
+
+**Single root `meta` on `WeatherDetailResponse` only.** Phase 2 does **not** emit `meta.forecast` / `meta.air_quality` sub-objects (deferred). Frontend Phase 6 uses root meta for the forecast hero and per-field nulls for lifestyle cards.
+
+## User refresh header (Phase 6 / Option A)
+
+When `ENABLE_STALE_WHILE_REVALIDATE=true` and request includes **`X-AtmosMind-Refresh: 1`**: batch, detail, and lifestyle skip **soft-fresh** cache short-circuit, attempt upstream (CB still applies), on failure serve stale/unavailable as usual.
+
 ## Flags
 
 `ENABLE_STALE_WHILE_REVALIDATE`, `ENABLE_CIRCUIT_BREAKER` (default false). Off → Phase 1 behavior.
