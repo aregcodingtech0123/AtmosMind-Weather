@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from circuit_breaker import BREAKER_FORECAST, get_breaker, reset_breakers_for_tests
+from circuit_breaker import BREAKER_FORECAST, get_sync_breaker, reset_breakers_for_tests
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +18,7 @@ def _reset():
 def test_opens_after_threshold_failures(monkeypatch):
     monkeypatch.setenv("CB_FAILURE_THRESHOLD", "3")
     monkeypatch.setenv("CB_WINDOW_SECONDS", "60")
-    b = get_breaker(BREAKER_FORECAST)
+    b = get_sync_breaker(BREAKER_FORECAST)
     for _ in range(3):
         assert b.acquire_upstream_slot(permit_probe=True)
         b.record_failure(count=True)
@@ -28,7 +28,7 @@ def test_opens_after_threshold_failures(monkeypatch):
 def test_half_open_single_probe(monkeypatch):
     monkeypatch.setenv("CB_FAILURE_THRESHOLD", "1")
     monkeypatch.setenv("CB_OPEN_SECONDS", "60")
-    b = get_breaker(BREAKER_FORECAST)
+    b = get_sync_breaker(BREAKER_FORECAST)
     assert b.acquire_upstream_slot(permit_probe=True)
     b.record_failure(count=True)
     assert not b.acquire_upstream_slot(permit_probe=True)

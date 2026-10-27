@@ -13,7 +13,7 @@ from typing import Any
 import requests
 
 from logging_config import log_outbound_api, log_upstream_status_event
-from circuit_breaker import BREAKER_FORECAST, get_breaker
+from circuit_breaker import BREAKER_FORECAST, get_sync_breaker
 from metrics import (
     is_circuit_breaker_enabled,
     record_upstream_429_attempt,
@@ -86,12 +86,12 @@ def _build_batch_forecast_url(lats: list[float], lons: list[float]) -> str:
 
 def _record_forecast_breaker_success() -> None:
     if is_circuit_breaker_enabled():
-        get_breaker(BREAKER_FORECAST).record_success()
+        get_sync_breaker(BREAKER_FORECAST).record_success()
 
 
 def _record_forecast_breaker_failure(*, count: bool) -> None:
     if is_circuit_breaker_enabled():
-        get_breaker(BREAKER_FORECAST).record_failure(count=count)
+        get_sync_breaker(BREAKER_FORECAST).record_failure(count=count)
 
 
 def _get_json_with_retry(
@@ -101,7 +101,7 @@ def _get_json_with_retry(
     count_cb_failures: bool = True,
     permit_cb_probe: bool = True,
 ) -> Any:
-    breaker = get_breaker(BREAKER_FORECAST)
+    breaker = get_sync_breaker(BREAKER_FORECAST)
     if is_circuit_breaker_enabled():
         if not breaker.acquire_upstream_slot(permit_probe=permit_cb_probe):
             raise UpstreamBlockedError(retry_after_seconds=breaker.retry_after_seconds())
@@ -227,7 +227,7 @@ def get_current_weather_batch_by_coords(
                 count_cb_failures=count_cb_failures,
                 permit_cb_probe=permit_cb_probe,
             )
-        except UpstreamBlockedError as exc:
+        except UpstreamBlockedError:
             logger.warning(
                 "Batch forecast blocked by circuit breaker (chunk starting %d)",
                 chunk_start,

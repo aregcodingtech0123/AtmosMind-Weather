@@ -22,7 +22,12 @@ Bare dict (no envelope): treat as **stale**, `fetched_at=null`. Try upstream; on
 
 ## Half-open concurrency
 
-Single probe via `threading.Lock`. First request probes; concurrent requests **defer** upstream (serve stale if present, else unavailable). Probe success → closed; failure → open.
+Two lock types:
+
+- **Forecast (sync):** `SyncCircuitBreaker` + `threading.Lock` / non-blocking probe lock (`open_meteo_client`).
+- **Air quality (async):** `AsyncCircuitBreaker` + `asyncio.Lock` (no blocking probe wait on the event loop).
+
+Single probe at a time. Concurrent requests during probing **defer upstream immediately** (non-blocking): return stale payload or unavailable per endpoint rules. They **do not wait** for the probe to finish and are **not** notified when the probe succeeds — the **next** request after the breaker closes may fetch fresh data.
 
 ## CB open + empty cache
 

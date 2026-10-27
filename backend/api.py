@@ -40,7 +40,13 @@ from redis_cache import (
     utc_fetched_at_now,
     warn_deprecated_ttl_env_at_startup,
 )
-from circuit_breaker import BREAKER_FORECAST, get_breaker
+from circuit_breaker import BREAKER_FORECAST, get_sync_breaker
+from ai_fresh_context import (
+    DataUnavailableForAI,
+    data_unavailable_detail,
+    require_fresh_weather_context,
+    weather_context_to_summary,
+)
 from metrics import is_circuit_breaker_enabled, is_stale_while_revalidate_enabled
 from resilience import UPSTREAM_UNAVAILABLE, optional_response_meta, swr_enabled
 from security import (
@@ -121,7 +127,7 @@ def _prewarm_weather_cache(popular: list[dict]) -> None:
         logger.info("Weather cache pre-warm: all %d candidates already cached.", len(candidates))
         return
 
-    if is_circuit_breaker_enabled() and get_breaker(BREAKER_FORECAST).is_open_for_background():
+    if is_circuit_breaker_enabled() and get_sync_breaker(BREAKER_FORECAST).is_open_for_background():
         logger.info("Weather cache pre-warm skipped: forecast circuit breaker is open.")
         return
 
@@ -299,9 +305,41 @@ class WeatherResponse(BaseModel):
     aiAnswer: str
 
 
+def _ai_coords_from_city_or_point(
+    city: str | None,
+    latitude: float | None,
+    longitude: float | None,
+) -> tuple[float, float] | None:
+    if latitude is not None and longitude is not None:
+        return latitude, longitude
+    if city:
+        return _resolve_coords(city.strip())
+    return None
+
+
+def _enforce_fresh_weather_for_ai(
+    city: str | None,
+    latitude: float | None,
+    longitude: float | None,
+) -> dict[str, Any] | None:
+    """When SWR is on, ensures fresh weather exists or raises DataUnavailableForAI."""
+    if not swr_enabled():
+        return None
+    coords = _ai_coords_from_city_or_point(city, latitude, longitude)
+    if coords is None:
+        return None
+    lat, lon = coords
+    return require_fresh_weather_context(lat, lon, _get_redis())
+
+
 @app.post("/api/ai-weather", response_model=WeatherResponse)
 async def ai_weather(req: WeatherRequest, request: Request):
     await enforce_rate_limit(request, "ai-weather", _get_redis())
+    try:
+        fresh = _enforce_fresh_weather_for_ai(req.city, None, None)
+    except DataUnavailableForAI as exc:
+        raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
+
     question = (
         f"Lütfen '{req.city}' şehri için güncel hava durumunu getir. "
         f"get_weather_in_city aracını kullan ve kısa, anlaşılır yanıt ver. "
@@ -310,6 +348,17 @@ async def ai_weather(req: WeatherRequest, request: Request):
     )
 
     ai_answer = hava_durumu_asistani(question)
+
+    if fresh is not None:
+        return WeatherResponse(
+            city=req.city,
+            temperature=fresh.get("temperature"),
+            condition=fresh.get("condition"),
+            humidity=None,
+            wind=None,
+            time=None,
+            aiAnswer=str(ai_answer),
+        )
 
     weather = get_live_weather(req.city)
     if isinstance(weather, dict) and "error" in weather:
@@ -626,7 +675,14 @@ class GetCityAdviceResponse(BaseModel):
 @app.post("/api/get-city-advice", response_model=GetCityAdviceResponse)
 async def get_city_advice_endpoint(req: GetCityAdviceRequest, request: Request):
     await enforce_rate_limit(request, "get-city-advice", _get_redis())
-    advice = get_city_advice(req.city, req.weather_summary, req.language, req.unit)
+    summary = req.weather_summary
+    try:
+        fresh = _enforce_fresh_weather_for_ai(req.city, None, None)
+        if fresh is not None:
+            summary = weather_context_to_summary(fresh, req.unit)
+    except DataUnavailableForAI as exc:
+        raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
+    advice = get_city_advice(req.city, summary, req.language, req.unit)
     return GetCityAdviceResponse(advice=advice)
 
 
@@ -644,7 +700,14 @@ class GetForecastSummaryResponse(BaseModel):
 @app.post("/api/get-forecast-summary", response_model=GetForecastSummaryResponse)
 async def get_forecast_summary_endpoint(req: GetForecastSummaryRequest, request: Request):
     await enforce_rate_limit(request, "get-forecast-summary", _get_redis())
-    summary = get_forecast_summary(req.city, req.weather_summary, req.language, req.unit)
+    weather_summary = req.weather_summary
+    try:
+        fresh = _enforce_fresh_weather_for_ai(req.city, None, None)
+        if fresh is not None:
+            weather_summary = weather_context_to_summary(fresh, req.unit)
+    except DataUnavailableForAI as exc:
+        raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
+    summary = get_forecast_summary(req.city, weather_summary, req.language, req.unit)
     return GetForecastSummaryResponse(summary=summary)
 
 
@@ -784,6 +847,15 @@ async def chat_sse_generator(req: ChatRequest, session_id: str):
 async def chat_endpoint(req: ChatRequest, request: Request):
     await enforce_rate_limit(request, "chat", _get_redis())
     session_id = (req.session_id or "").strip() or get_client_ip(request)
+
+    try:
+        _enforce_fresh_weather_for_ai(
+            req.city_name,
+            req.latitude,
+            req.longitude,
+        )
+    except DataUnavailableForAI as exc:
+        raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
 
     return StreamingResponse(
         chat_sse_generator(req, session_id),

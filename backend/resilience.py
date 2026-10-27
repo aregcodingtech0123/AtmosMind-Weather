@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from cache_meta import CacheMeta, DataStatus, ResponseMeta
-from circuit_breaker import BREAKER_FORECAST, get_breaker
+from circuit_breaker import BREAKER_FORECAST, get_sync_breaker
 from metrics import is_circuit_breaker_enabled, is_stale_while_revalidate_enabled
 
 UPSTREAM_UNAVAILABLE = "upstream_unavailable"
@@ -23,11 +23,11 @@ def optional_response_meta(meta: CacheMeta | None) -> ResponseMeta | None:
 def forecast_upstream_blocked() -> bool:
     if not is_circuit_breaker_enabled():
         return False
-    return not get_breaker(BREAKER_FORECAST).acquire_upstream_slot(permit_probe=True)
+    return not get_sync_breaker(BREAKER_FORECAST).acquire_upstream_slot(permit_probe=True)
 
 
 def forecast_retry_after_seconds() -> int:
-    return get_breaker(BREAKER_FORECAST).retry_after_seconds()
+    return get_sync_breaker(BREAKER_FORECAST).retry_after_seconds()
 
 
 def ai_data_unavailable_body() -> dict[str, Any]:

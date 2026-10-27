@@ -17,7 +17,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from cache_meta import CacheMeta, DataStatus, ResponseMeta
-from circuit_breaker import BREAKER_AIR_QUALITY, get_breaker
+from circuit_breaker import BREAKER_AIR_QUALITY, get_async_breaker
 from metrics import is_circuit_breaker_enabled
 from redis_cache import (
     get_cached_air_quality,
@@ -313,8 +313,8 @@ async def _fetch_air_quality_slice(
             return cached
         stale_payload = None
 
-    breaker = get_breaker(BREAKER_AIR_QUALITY)
-    if is_circuit_breaker_enabled() and not breaker.acquire_upstream_slot(permit_probe=True):
+    breaker = get_async_breaker(BREAKER_AIR_QUALITY)
+    if is_circuit_breaker_enabled() and not await breaker.acquire_upstream_slot(permit_probe=True):
         if stale_payload is not None:
             return stale_payload
         raise httpx.HTTPError("air quality upstream blocked")
@@ -333,12 +333,12 @@ async def _fetch_air_quality_slice(
         )
     except Exception:
         if is_circuit_breaker_enabled():
-            breaker.record_failure(count=True)
+            await breaker.record_failure(count=True)
         if stale_payload is not None:
             return stale_payload
         raise
     if is_circuit_breaker_enabled():
-        breaker.record_success()
+        await breaker.record_success()
     set_cached_air_quality(redis_client, latitude, longitude, payload)
     return payload
 
