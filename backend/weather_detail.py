@@ -42,6 +42,7 @@ from redis_cache import (
     utc_fetched_at_now,
 )
 from resilience import optional_response_meta, swr_enabled
+from weather_provider import get_weather_detail
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +365,16 @@ async def _fetch_forecast_and_lifestyle_shared(
     If forecast fails, the air-quality task is cancelled (forecast failure short-circuits
     lifestyle assembly for the detail page).
     """
-    forecast_task = asyncio.create_task(_fetch_forecast_json(client, forecast_params))
+    forecast_task = asyncio.create_task(
+        get_weather_detail(
+            latitude,
+            longitude,
+            forecast_params.get("language", "en"),
+            "imperial" if forecast_params.get("temperature_unit") == "fahrenheit" else "metric",
+            client=client,
+            forecast_params=forecast_params,
+        )
+    )
     aq_task = asyncio.create_task(
         fetch_air_quality_for_coords(client, redis_client, latitude, longitude)
     )
@@ -476,7 +486,14 @@ async def fetch_weather_detail(
                 raise ForecastUnavailableError(str(exc)) from exc
         else:
             forecast_result, lifestyle_result = await asyncio.gather(
-                _fetch_forecast_json(client, forecast_params),
+                get_weather_detail(
+                    latitude,
+                    longitude,
+                    lang,
+                    unit,
+                    client=client,
+                    forecast_params=forecast_params,
+                ),
                 fetch_lifestyle_indices(latitude, longitude, redis_client=redis_client),
                 return_exceptions=True,
             )

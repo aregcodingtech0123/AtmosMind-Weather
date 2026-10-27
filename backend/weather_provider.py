@@ -6,10 +6,12 @@ the existing forecast circuit breaker handles sustained upstream failure.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from typing import Any
+from typing import Any, Literal
 
+import httpx
 import requests
 
 from open_meteo_client import (
@@ -19,6 +21,7 @@ from open_meteo_client import (
 )
 from openweathermap_client import (
     OpenWeatherRateLimitError,
+    fetch_onecall,
     get_api_key,
     get_current_weather_by_coords as owm_current,
 )
@@ -202,3 +205,62 @@ def get_current_weather_batch_by_coords(
             results[original_index] = meteo_item
 
     return results
+
+
+async def get_weather_detail(
+    latitude: float,
+    longitude: float,
+    language: str,
+    unit: Literal["metric", "imperial"] | str = "metric",
+    *,
+    client: httpx.AsyncClient,
+    forecast_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Full Open-Meteo-shaped forecast JSON for city detail (current, hourly, daily).
+
+    Primary: OpenWeather One Call (normalized). Fallback: Open-Meteo ``_fetch_forecast_json``.
+    OpenWeather 429 does not fall back to Open-Meteo.
+    """
+    from weather_detail import ForecastUnavailableError, _detail_forecast_params, _fetch_forecast_json
+
+    lang = (language or "en").split("-")[0][:8]
+    unit_key: Literal["metric", "imperial"] = "imperial" if unit == "imperial" else "metric"
+    params = forecast_params or _detail_forecast_params(latitude, longitude, lang, unit_key)
+
+    async def _fetch_open_meteo() -> dict[str, Any]:
+        return await _fetch_forecast_json(client, params)
+
+    if get_primary_provider() == _PRIMARY_OPEN_METEO or not get_api_key():
+        return await _fetch_open_meteo()
+
+    owm_units = "imperial" if unit_key == "imperial" else "metric"
+    try:
+        payload = await asyncio.to_thread(
+            fetch_onecall, latitude, longitude, units=owm_units
+        )
+        if isinstance(payload, dict) and payload.get("current"):
+            return payload
+        logger.warning(
+            "OpenWeatherMap detail payload missing current block for (%s, %s); using Open-Meteo",
+            latitude,
+            longitude,
+        )
+    except OpenWeatherRateLimitError as exc:
+        logger.warning(
+            "OpenWeatherMap rate limited for detail (%s, %s); not falling back to Open-Meteo",
+            latitude,
+            longitude,
+        )
+        raise ForecastUnavailableError(str(exc)) from exc
+    except Exception as exc:
+        if not _is_failover_eligible(exc):
+            raise
+        logger.warning(
+            "OpenWeatherMap detail failed for (%s, %s): %s; using Open-Meteo fallback",
+            latitude,
+            longitude,
+            exc,
+        )
+
+    return await _fetch_open_meteo()

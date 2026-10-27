@@ -1,16 +1,19 @@
 """Unit tests for weather provider failover."""
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 import requests
 
 from openweathermap_client import OpenWeatherRateLimitError
+from weather_detail import ForecastUnavailableError
 from weather_provider import (
     get_current_weather_batch_by_coords,
     get_primary_provider,
     get_weather_data,
+    get_weather_detail,
 )
 
 
@@ -85,3 +88,81 @@ def test_batch_open_meteo_primary_uses_meteo_batch(mock_batch, monkeypatch):
     results = get_current_weather_batch_by_coords([(41.0, 29.0)])
     assert results == [{"temperature": 1.0}]
     mock_batch.assert_called_once()
+
+
+def _detail_forecast_payload() -> dict:
+    return {
+        "current": {
+            "temperature_2m": 20.0,
+            "weather_code": 1,
+            "relative_humidity_2m": 55.0,
+            "wind_speed_10m": 8.0,
+            "apparent_temperature": 19.0,
+            "visibility": 10000.0,
+            "dew_point_2m": 11.0,
+        },
+        "hourly": {
+            "time": ["2025-06-24T12:00"],
+            "temperature_2m": [20.0],
+            "weather_code": [1],
+            "relative_humidity_2m": [55.0],
+            "wind_speed_10m": [8.0],
+        },
+        "daily": {
+            "time": ["2025-06-24"],
+            "weather_code": [1],
+            "temperature_2m_max": [24.0],
+            "temperature_2m_min": [15.0],
+            "precipitation_sum": [0.0],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_detail_openweather_success(monkeypatch):
+    owm_payload = _detail_forecast_payload()
+
+    async def _fake_to_thread(_func, *_args, **_kwargs):
+        return owm_payload
+
+    monkeypatch.setattr("weather_provider.asyncio.to_thread", _fake_to_thread)
+
+    async with httpx.AsyncClient() as client:
+        result = await get_weather_detail(41.0, 29.0, "en", "metric", client=client)
+
+    assert result["current"]["temperature_2m"] == 20.0
+    assert result["current"]["visibility"] == 10000.0
+
+
+@pytest.mark.asyncio
+async def test_detail_openweather_failover_to_meteo(monkeypatch):
+    meteo_payload = _detail_forecast_payload()
+    meteo_payload["current"]["temperature_2m"] = 17.0
+
+    async def _failing_to_thread(_func, *_args, **_kwargs):
+        raise requests.ConnectionError("owm unreachable")
+
+    monkeypatch.setattr("weather_provider.asyncio.to_thread", _failing_to_thread)
+
+    with patch(
+        "weather_detail._fetch_forecast_json",
+        new=AsyncMock(return_value=meteo_payload),
+    ):
+        async with httpx.AsyncClient() as client:
+            result = await get_weather_detail(41.0, 29.0, "en", "metric", client=client)
+
+    assert result["current"]["temperature_2m"] == 17.0
+
+
+@pytest.mark.asyncio
+async def test_detail_openweather_429_no_meteo_fallback(monkeypatch):
+    async def _rate_limited_to_thread(_func, *_args, **_kwargs):
+        raise OpenWeatherRateLimitError()
+
+    monkeypatch.setattr("weather_provider.asyncio.to_thread", _rate_limited_to_thread)
+
+    with patch("weather_detail._fetch_forecast_json", new=AsyncMock()) as meteo_mock:
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(ForecastUnavailableError):
+                await get_weather_detail(41.0, 29.0, "en", "metric", client=client)
+        meteo_mock.assert_not_called()

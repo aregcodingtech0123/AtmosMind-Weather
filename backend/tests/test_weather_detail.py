@@ -47,7 +47,7 @@ async def test_fetch_weather_detail_uses_redis_cache():
         "weather_detail.get_cached_weather_detail",
         return_value=cached_payload,
     ):
-        with patch("weather_detail._fetch_forecast_json", new=AsyncMock()) as forecast_mock:
+        with patch("weather_detail.get_weather_detail", new=AsyncMock()) as forecast_mock:
             result = await fetch_weather_detail(41.0, 29.0, redis_client=redis)
 
     forecast_mock.assert_not_called()
@@ -86,7 +86,7 @@ async def test_fetch_weather_detail_merges_forecast_and_lifestyle():
     lifestyle = LifestyleIndicesResponse(latitude=51.5, longitude=-0.12, aqi_value=20)
 
     with patch(
-        "weather_detail._fetch_forecast_json",
+        "weather_detail.get_weather_detail",
         new=AsyncMock(return_value=_forecast_payload()),
     ):
         with patch(
@@ -104,7 +104,7 @@ async def test_fetch_weather_detail_merges_forecast_and_lifestyle():
 @pytest.mark.asyncio
 async def test_fetch_weather_detail_degrades_lifestyle_on_failure():
     with patch(
-        "weather_detail._fetch_forecast_json",
+        "weather_detail.get_weather_detail",
         new=AsyncMock(return_value=_forecast_payload()),
     ):
         with patch(
@@ -120,7 +120,7 @@ async def test_fetch_weather_detail_degrades_lifestyle_on_failure():
 @pytest.mark.asyncio
 async def test_fetch_weather_detail_raises_when_forecast_fails():
     with patch(
-        "weather_detail._fetch_forecast_json",
+        "weather_detail.get_weather_detail",
         new=AsyncMock(side_effect=httpx.HTTPStatusError(
             "server error",
             request=httpx.Request("GET", "https://api.open-meteo.com/v1/forecast"),
@@ -145,7 +145,7 @@ async def test_share_forecast_calls_open_meteo_forecast_exactly_once(monkeypatch
         return _forecast_payload()
 
     monkeypatch.setattr("weather_detail.is_weather_detail_share_forecast_enabled", lambda: True)
-    monkeypatch.setattr("weather_detail._fetch_forecast_json", fake_forecast)
+    monkeypatch.setattr("weather_detail.get_weather_detail", fake_forecast)
     monkeypatch.setattr(
         "weather_detail.fetch_air_quality_for_coords",
         AsyncMock(
@@ -186,7 +186,7 @@ async def test_fetch_weather_detail_share_forecast_parallel_no_second_forecast()
 
     with patch("weather_detail.is_weather_detail_share_forecast_enabled", return_value=True):
         with patch(
-            "weather_detail._fetch_forecast_json",
+            "weather_detail.get_weather_detail",
             new=AsyncMock(return_value=_forecast_payload()),
         ):
             with patch(
@@ -223,7 +223,7 @@ async def test_fetch_weather_detail_share_forecast_forecast_fail_cancels_air_tas
 
     with patch("weather_detail.is_weather_detail_share_forecast_enabled", return_value=True):
         with patch(
-            "weather_detail._fetch_forecast_json",
+            "weather_detail.get_weather_detail",
             new=AsyncMock(side_effect=httpx.ReadTimeout("forecast timeout")),
         ):
             with patch(
@@ -245,7 +245,7 @@ async def test_fetch_weather_detail_share_forecast_forecast_fail_cancels_air_tas
 @pytest.mark.asyncio
 async def test_fetch_weather_detail_raises_when_forecast_times_out():
     with patch(
-        "weather_detail._fetch_forecast_json",
+        "weather_detail.get_weather_detail",
         new=AsyncMock(side_effect=httpx.ReadTimeout("forecast read timeout")),
     ):
         with patch(
