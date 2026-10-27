@@ -348,7 +348,7 @@ def get_current_weather_by_coords(lat: float, lon: float) -> dict:
 
     Delegates to the throttled batch client (single coordinate).
     """
-    from open_meteo_client import get_current_weather_by_coords as _fetch_coords
+    from weather_provider import get_weather_data as _fetch_coords
 
     return _fetch_coords(lat, lon)
 

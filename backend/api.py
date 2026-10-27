@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from weather_assistant import hava_durumu_asistani, get_live_weather, get_current_weather_by_coords, geocode_city
-from open_meteo_client import get_current_weather_batch_by_coords
+from weather_provider import get_current_weather_batch_by_coords
 # city_autocomplete_ai (Gemini-based) is no longer used for autocomplete.
 # Autocomplete is now served by the Redis→SQLite tiered strategy below.
 from ai_advice import get_city_advice, get_forecast_summary

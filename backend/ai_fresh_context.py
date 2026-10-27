@@ -5,7 +5,7 @@ from typing import Any
 
 from cache_meta import DataStatus
 from circuit_breaker import BREAKER_FORECAST, get_sync_breaker
-from open_meteo_client import get_current_weather_by_coords
+from weather_provider import get_weather_data as get_current_weather_by_coords
 from redis_cache import (
     get_cached_air_quality_with_meta,
     get_cached_weather_with_meta,
