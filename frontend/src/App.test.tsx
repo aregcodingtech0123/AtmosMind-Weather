@@ -98,19 +98,24 @@ function mockDesktopViewport() {
 }
 
 function mockBatchFiveStaleFifteenFresh() {
-  mockFetchPopularWeatherBatch.mockResolvedValue({
-    results: POPULAR_CITIES.map((city, index) => ({
-      city: city.defaultName,
-      temperature: 20 + (index % 10),
-      condition: 'Clear',
-      weather_code: 0,
-      error: null,
-      meta:
-        index < 5
-          ? { data_status: 'stale', fetched_at: '2026-10-28T10:00:00.000Z' }
-          : { data_status: 'fresh', fetched_at: '2026-10-28T15:00:00.000Z' },
-    })),
-  });
+  const results = POPULAR_CITIES.map((city, index) => ({
+    city: city.defaultName,
+    temperature: 20 + (index % 10),
+    condition: 'Clear',
+    weather_code: 0,
+    error: null,
+    meta:
+      index < 5
+        ? { data_status: 'stale' as const, fetched_at: '2026-10-28T10:00:00.000Z' }
+        : { data_status: 'fresh' as const, fetched_at: '2026-10-28T15:00:00.000Z' },
+  }));
+  const temperatures: Record<string, number> = {};
+  for (const item of results) {
+    if (item.temperature != null) {
+      temperatures[item.city] = item.temperature;
+    }
+  }
+  mockFetchPopularWeatherBatch.mockResolvedValue({ results, temperatures });
 }
 
 beforeEach(() => {

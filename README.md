@@ -225,6 +225,8 @@ cd frontend
 npm test -- --watchAll=false
 ```
 
+Before pushing frontend changes, also run **`npm run type-check && npm run build`** locally. `npm test` uses Babel and does not type-check test files; Vercel runs `npm run build` (TypeScript), which will fail on type errors Jest missed.
+
 ---
 
 ## CI/CD
@@ -232,7 +234,7 @@ npm test -- --watchAll=false
 GitHub Actions workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request to `main` or `master`:
 
 - **test-backend** — Python 3.11, Redis service, `pytest`
-- **test-frontend** — Node 20, `npm ci`, Jest (non-interactive)
+- **test-frontend** — Node 20, `npm ci`, `tsc --noEmit`, `npm run build`, Jest (non-interactive)
 
 If either job fails, the workflow exits with a non-zero status. Configure **branch protection** and Vercel **“Wait for GitHub Checks”** so failed tests block merges and deployments.
 

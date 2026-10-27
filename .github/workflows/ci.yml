@@ -24,7 +24,7 @@
 #
 # JOBS
 #   test-backend  — Python 3.11, Redis service, pytest in backend/
-#   test-frontend — Node.js 20, npm ci, Jest non-interactive in frontend/
+#   test-frontend — Node.js 20, npm ci, tsc, production build, Jest in frontend/
 # =============================================================================
 
 name: CI
@@ -136,6 +136,12 @@ jobs:
       - name: Install frontend dependencies
         # frontend/.npmrc sets legacy-peer-deps=true (honored by npm ci)
         run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
 
       - name: Run Jest tests (non-interactive)
         run: npm test -- --watchAll=false --passWithNoTests
