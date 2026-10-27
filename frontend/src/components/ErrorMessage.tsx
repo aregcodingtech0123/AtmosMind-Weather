@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { GlassCard } from './GlassCard';
 import { motion } from 'framer-motion';
 
@@ -9,6 +10,7 @@ interface ErrorMessageProps {
 }
 
 export const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onRetry }) => {
+  const { t } = useTranslation();
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -27,7 +29,7 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onRetry }) 
               data-testid="retry-button"
             >
               <RefreshCw className="w-4 h-4" strokeWidth={1.5} />
-              Try Again
+              {t('weather.retry')}
             </button>
           )}
         </div>

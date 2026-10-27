@@ -116,7 +116,12 @@
     "scrollLeft": "Scroll left",
     "scrollRight": "Scroll right",
     "now": "Now",
-    "temperatureTrend": "Temperature Trend"
+    "temperatureTrend": "Temperature Trend",
+    "stale_badge": "Last updated {{time}}",
+    "stale_badge_unknown": "Last updated",
+    "unavailable": "Data temporarily unavailable",
+    "retry": "Try again",
+    "ai_unavailable": "Weather data is temporarily unavailable for AI answers. Please try again shortly."
   },
   "lifestyleIndices": {
     "title": "Lifestyle Quality Indices",

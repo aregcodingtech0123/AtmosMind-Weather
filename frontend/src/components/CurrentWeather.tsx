@@ -12,19 +12,23 @@ import {
 import { cn } from '../utils/cn';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from 'react-i18next';
+import type { ResponseMeta } from '../types/resilience';
+import { StaleBadge } from './StaleBadge';
 
 interface CurrentWeatherProps {
   data: CurrentWeatherType;
   cityName: string;
   isFavorite: boolean;
   onToggleFavorite: () => void;
+  detailMeta?: ResponseMeta | null;
 }
 
-export const CurrentWeatherComponent: React.FC<CurrentWeatherProps> = ({ 
-  data, 
+export const CurrentWeatherComponent: React.FC<CurrentWeatherProps> = ({
+  data,
   cityName,
   isFavorite,
-  onToggleFavorite
+  onToggleFavorite,
+  detailMeta,
 }) => {
     const { currentUnit, currentLanguage } = useSettings();
   const { t } = useTranslation();
@@ -57,7 +61,12 @@ export const CurrentWeatherComponent: React.FC<CurrentWeatherProps> = ({
               />
             </button>
           </div>
-          <p className="text-white/70 text-sm mb-6">{formatFullDate(new Date(), currentLanguage)}</p>
+          <p className="text-white/70 text-sm mb-6 flex flex-wrap items-center gap-x-2">
+            <span>{formatFullDate(new Date(), currentLanguage)}</span>
+            {detailMeta?.data_status === 'stale' && (
+              <StaleBadge fetchedAt={detailMeta.fetched_at} className="text-amber-200/90 text-xs" />
+            )}
+          </p>
           
           <div className="flex items-start gap-4">
             <WeatherIcon code={data.weatherCode} isNight={isNight} size="xl" />

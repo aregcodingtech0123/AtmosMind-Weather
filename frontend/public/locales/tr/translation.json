@@ -87,7 +87,12 @@
     "scrollLeft": "Sola kaydır",
     "scrollRight": "Sağa kaydır",
     "now": "Şimdi",
-    "temperatureTrend": "Sıcaklık Trendi"
+    "temperatureTrend": "Sıcaklık Trendi",
+    "stale_badge": "Son güncelleme {{time}}",
+    "stale_badge_unknown": "Son güncelleme",
+    "unavailable": "Veri geçici olarak kullanılamıyor",
+    "retry": "Yenile",
+    "ai_unavailable": "Yapay zeka yanıtları için hava verisi geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar deneyin."
   },
   "lifestyleIndices": {
     "title": "Yaşam Kalitesi Endeksleri",

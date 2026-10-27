@@ -1,4 +1,4 @@
-import { apiUrl } from '../services/api';
+import { apiUrl, parseDataUnavailableResponse } from '../services/api';
 
 export interface ChatStreamMessage {
   role: 'user' | 'assistant';
@@ -74,7 +74,12 @@ function processSseEvent(
   }
 
   if (event.type === 'error' || event.error) {
-    const message = event.error ?? event.reply ?? event.message ?? GENERIC_STREAM_ERROR;
+    const raw = event.error ?? event.reply ?? event.message ?? GENERIC_STREAM_ERROR;
+    const message =
+      raw === 'data_unavailable' ||
+      (typeof raw === 'string' && raw.includes('data_unavailable'))
+        ? 'data_unavailable'
+        : raw;
     receivedRef.value = true;
     callbacks.onError?.(message);
     return 'error';
@@ -202,6 +207,11 @@ export async function streamChatReply(
     });
 
     if (!response.ok) {
+      const unavailable = await parseDataUnavailableResponse(response);
+      if (unavailable) {
+        callbacks.onError?.('data_unavailable');
+        return;
+      }
       throw new Error(`Chat request failed: ${response.status}`);
     }
 

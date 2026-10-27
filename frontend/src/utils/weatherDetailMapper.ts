@@ -1,4 +1,5 @@
 import type { LifestyleIndices, WeatherData } from '../types/weather';
+import type { ResponseMeta } from '../types/resilience';
 
 /** Raw weather slice from POST /api/weather/detail */
 export interface WeatherDetailWeatherApi {
@@ -30,6 +31,7 @@ export interface WeatherDetailApiResponse {
   longitude: number;
   weather: WeatherDetailWeatherApi;
   lifestyle_indices: LifestyleIndices;
+  meta?: ResponseMeta | null;
 }
 
 export function mapWeatherDetailToWeatherData(weather: WeatherDetailWeatherApi): WeatherData {

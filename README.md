@@ -29,7 +29,7 @@ AtmosMind is an AI-powered global weather platform with a multilingual React das
 
 ### Internationalization
 
-- **45 UI languages** — `i18next` with locale files under `frontend/public/locales/`.
+- **42 UI languages** — `i18next` with locale files under `frontend/public/locales/`.
 - **RTL** — Arabic, Urdu, and Persian layouts supported.
 
 ### Security and operations
@@ -88,7 +88,7 @@ AtmosMind-Weather-main/
     │   ├── hooks/               # useCityDetail, geolocation, favorites
     │   ├── services/api.ts      # Backend API client
     │   └── utils/               # chatStream, requestGuard, mappers
-    ├── public/locales/          # i18n JSON (45 languages)
+    ├── public/locales/          # i18n JSON (42 languages)
     ├── nginx.conf               # Proxies /api → backend in Docker
     ├── Dockerfile
     └── package.json

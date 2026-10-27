@@ -212,7 +212,22 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({
             appendAssistantToken(token);
           },
           onError: (message) => {
-            appendAssistantReply(message || t('chat.errorFallback'));
+            const isDataUnavailable = message === 'data_unavailable';
+            const text = isDataUnavailable
+              ? String(t('weather.ai_unavailable'))
+              : message || t('chat.errorFallback');
+
+            assistantResponded = true;
+            if (isDataUnavailable) {
+              setMessages((prev) => {
+                const withoutPartial = prev.filter(
+                  (m) => !(m.role === 'assistant' && m.streaming)
+                );
+                return [...withoutPartial, { role: 'assistant', content: text }];
+              });
+              return;
+            }
+            appendAssistantReply(text);
           },
         },
         controller.signal

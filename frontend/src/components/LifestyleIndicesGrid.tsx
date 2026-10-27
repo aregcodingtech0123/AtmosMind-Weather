@@ -302,9 +302,14 @@ export const LifestyleIndicesGrid: React.FC<LifestyleIndicesGridProps> = ({
 
     const pollenUnavailable = isPollenUnavailable(data);
 
+    // Whole-card unavailable layout when both visibility and dew are missing.
     const visibilityUnavailable = isVisibilityUnavailable(data);
+    // Per-field copy for visibility value (dew can still be present).
+    const visibilityFieldMissing =
+      data.visibility_meters == null || Number.isNaN(data.visibility_meters);
+    const dewUnavailable = data.dew_point_celsius == null || Number.isNaN(data.dew_point_celsius);
 
-
+    const fieldUnavailableLabel = String(t('weather.unavailable', { defaultValue: unavailableLabel }));
 
     const aqiDisplay = aqiUnavailable
 
@@ -350,18 +355,15 @@ export const LifestyleIndicesGrid: React.FC<LifestyleIndicesGridProps> = ({
 
       pollenLabel,
 
-      visibility: visibilityUnavailable
-
-        ? unavailableLabel
-
+      visibility: visibilityFieldMissing
+        ? fieldUnavailableLabel
         : formatVisibility(data.visibility_meters, currentUnit),
 
-      dewPoint: visibilityUnavailable
-
-        ? unavailableLabel
-
+      dewPoint: dewUnavailable
+        ? fieldUnavailableLabel
         : formatDewPoint(data.dew_point_celsius, currentUnit),
 
+      dewUnavailable,
     };
 
   }, [data, currentUnit, t, unavailableLabel]);

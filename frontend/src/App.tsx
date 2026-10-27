@@ -39,6 +39,9 @@ import './App.css';
 import { POPULAR_CITIES } from './data/popularCities';
 import { sanitizeDisplayText } from './utils/sanitize';
 import { GEOCODE_TIMEOUT_MS, createRequestGuard } from './utils/requestGuard';
+import { StaleBadge } from './components/StaleBadge';
+import { UnavailableFade, WeatherValueSkeleton } from './components/WeatherValueSkeleton';
+import type { ResponseMeta } from './types/resilience';
 
 /** Dynamically resolves the image path for a given city based on its ID. */
 export function getCityImagePath(cityId: string): string {
@@ -50,6 +53,15 @@ export interface PopularCityWeather {
   temperature: number | null;
   condition: string | null;
   weather_code: number | null;
+  meta?: ResponseMeta | null;
+}
+
+const POPULAR_WEATHER_CACHE_PREFIX = 'atmosmind_popular_weather_cache_';
+
+function popularCacheHasMeta(data: Record<string, PopularCityWeather>): boolean {
+  const values = Object.values(data);
+  if (values.length === 0) return false;
+  return values.some((entry) => entry.meta != null && typeof entry.meta.data_status === 'string');
 }
 
 function weatherCodeToIcon(code: number) {
@@ -96,7 +108,16 @@ function App() {
   const [popularCitiesWeather, setPopularCitiesWeather] = useState<Record<string, PopularCityWeather>>({});
   const [popularCitiesWeatherLoading, setPopularCitiesWeatherLoading] = useState(true);
   const [popularCitiesWeatherError, setPopularCitiesWeatherError] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(6);
+  const [visibleCount, setVisibleCount] = useState(() => {
+    const fromEnv = process.env.REACT_APP_HOME_VISIBLE_CITIES;
+    if (fromEnv != null && String(fromEnv).trim() !== '') {
+      const n = Number(fromEnv);
+      if (Number.isFinite(n) && n > 0) {
+        return Math.min(n, POPULAR_CITIES.length);
+      }
+    }
+    return 6;
+  });
   const [resolvingCity, setResolvingCity] = useState(false);
   const [cityResolveError, setCityResolveError] = useState<string | null>(null);
   const geocodeGuardRef = useRef(createRequestGuard());
@@ -107,6 +128,7 @@ function App() {
     loading,
     error,
     lifestyleError: lifestyleIndicesError,
+    detailMeta,
     refetch,
   } = useCityDetail(latitude, longitude, currentLanguage, currentUnit);
   const lifestyleIndicesLoading = loading;
@@ -232,56 +254,81 @@ function App() {
     };
   }, [location.pathname, location.state, fetchAiWeather, currentLanguage, t]);
 
+  useEffect(() => {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith(POPULAR_WEATHER_CACHE_PREFIX))
+      .forEach((key) => localStorage.removeItem(key));
+  }, []);
+
   // Fetch batch weather on mount when on home: city names → temperatures for top-right bubbles
-  const fetchPopularBatch = useCallback(async () => {
-    setPopularCitiesWeatherLoading(true);
-    setPopularCitiesWeatherError(false);
+  const fetchPopularBatch = useCallback(
+    async (options?: { forceRefresh?: boolean }) => {
+      setPopularCitiesWeatherLoading(true);
+      setPopularCitiesWeatherError(false);
 
-    try {
-      const cacheKey = `atmosmind_popular_weather_cache_${currentLanguage}_${currentUnit}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Date.now() - parsed.timestamp < 15 * 60 * 1000) {
-            setPopularCitiesWeather(parsed.data);
-            setPopularCitiesWeatherLoading(false);
-            return;
+      try {
+        const cacheKey = `${POPULAR_WEATHER_CACHE_PREFIX}${currentLanguage}_${currentUnit}`;
+        if (!options?.forceRefresh) {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached) as {
+                data: Record<string, PopularCityWeather>;
+                timestamp: number;
+              };
+              if (
+                Date.now() - parsed.timestamp < 15 * 60 * 1000 &&
+                popularCacheHasMeta(parsed.data)
+              ) {
+                setPopularCitiesWeather(parsed.data);
+                setPopularCitiesWeatherLoading(false);
+                return;
+              }
+            } catch {
+              // ignore cache parse error
+            }
           }
-        } catch {
-          // ignore cache parse error
         }
+
+        const cityNames = POPULAR_CITIES.map((c) => c.defaultName);
+        const batch = await fetchPopularWeatherBatch(cityNames, {
+          forceRefresh: options?.forceRefresh,
+        });
+        const map: Record<string, PopularCityWeather> = {};
+
+        POPULAR_CITIES.forEach((city) => {
+          const item =
+            batch.results.find((result) => result.city === city.defaultName) ??
+            batch.results.find((result) => result.city.startsWith(city.names.en));
+          if (!item) return;
+          map[city.id] = {
+            temperature: item.temperature,
+            condition: item.condition,
+            weather_code: item.weather_code,
+            meta: item.meta ?? null,
+          };
+        });
+
+        setPopularCitiesWeather(map);
+        if (popularCacheHasMeta(map)) {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              data: map,
+              timestamp: Date.now(),
+            })
+          );
+        }
+      } catch (err) {
+        console.error('Batch weather fetch error:', err);
+        setPopularCitiesWeatherError(true);
+        setPopularCitiesWeather({});
+      } finally {
+        setPopularCitiesWeatherLoading(false);
       }
-
-      const cityNames = POPULAR_CITIES.map((c) => c.defaultName);
-      const batch = await fetchPopularWeatherBatch(cityNames);
-      const map: Record<string, PopularCityWeather> = {};
-
-      POPULAR_CITIES.forEach((city) => {
-        const item =
-          batch.results.find((result) => result.city === city.defaultName) ??
-          batch.results.find((result) => result.city.startsWith(city.names.en));
-        if (!item) return;
-        map[city.id] = {
-          temperature: item.temperature,
-          condition: item.condition,
-          weather_code: item.weather_code,
-        };
-      });
-
-      setPopularCitiesWeather(map);
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data: map,
-        timestamp: Date.now()
-      }));
-    } catch (err) {
-      console.error('Batch weather fetch error:', err);
-      setPopularCitiesWeatherError(true);
-      setPopularCitiesWeather({});
-    } finally {
-      setPopularCitiesWeatherLoading(false);
-    }
-  }, [currentLanguage, currentUnit]);
+    },
+    [currentLanguage, currentUnit]
+  );
 
   useEffect(() => {
     if (location.pathname !== '/' && location.pathname !== '') return;
@@ -576,6 +623,7 @@ function App() {
 
                     return (
                       <motion.a
+                        data-testid="weather-card"
                         layout
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -636,25 +684,58 @@ function App() {
                           )}
                         >
                           {popularCitiesWeatherLoading ? (
-                            <span className="animate-pulse text-white/80">...</span>
+                            <WeatherValueSkeleton className="h-5 w-14 rounded-md bg-white/25" />
                           ) : popularCitiesWeatherError ? (
                             <button
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); fetchPopularBatch(); }}
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                fetchPopularBatch({ forceRefresh: true });
+                              }}
                               className="flex items-center justify-center p-1 rounded-full hover:bg-white/25 hover:rotate-180 transition-all duration-300"
-                              aria-label="Retry weather fetch"
+                              aria-label={String(t('weather.retry'))}
                             >
                               <RefreshCw className="w-4 h-4 text-white/90" />
                             </button>
                           ) : (() => {
-                            const cityData = popularCitiesWeather;
-                            const data = cityData[city.id];
+                            const data = popularCitiesWeather[city.id];
+                            const status = data?.meta?.data_status;
                             const temp = data?.temperature;
                             const code = data?.weather_code ?? 0;
                             const Icon = weatherCodeToIcon(code);
+                            const hasTemp = temp != null && Number.isFinite(temp);
+
+                            if (status === 'unavailable' || (!hasTemp && status !== 'stale')) {
+                              return (
+                                <UnavailableFade show className="flex items-center gap-1 max-w-[7rem]">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      fetchPopularBatch({ forceRefresh: true });
+                                    }}
+                                    className="text-[11px] leading-tight text-white/90 underline-offset-2 hover:underline"
+                                  >
+                                    {t('weather.unavailable')}
+                                  </button>
+                                </UnavailableFade>
+                              );
+                            }
+
                             return (
                               <>
-                                <Icon className="w-5 h-5 text-amber-200" strokeWidth={1.5} aria-hidden />
-                                <span>{temp != null && Number.isFinite(temp) ? formatTemperature(temp, currentUnit) : '—'}</span>
+                                <Icon className="w-5 h-5 text-amber-200 shrink-0" strokeWidth={1.5} aria-hidden />
+                                <span className="shrink-0">
+                                  {hasTemp ? formatTemperature(temp, currentUnit) : '—'}
+                                </span>
+                                {status === 'stale' && (
+                                  <StaleBadge
+                                    fetchedAt={data?.meta?.fetched_at}
+                                    className="text-[9px] text-amber-200/90 max-w-[4.5rem] truncate"
+                                  />
+                                )}
                               </>
                             );
                           })()}
@@ -761,7 +842,7 @@ function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <ErrorMessage message={error} onRetry={refetch} />
+              <ErrorMessage message={error} onRetry={() => refetch({ force: true })} />
             </motion.div>
           )}
 
@@ -791,6 +872,7 @@ function App() {
                   cityName={selectedCity}
                   isFavorite={latitude != null && longitude != null ? isFavorite(latitude, longitude) : false}
                   onToggleFavorite={handleToggleFavorite}
+                  detailMeta={detailMeta}
                 />
               )}
 

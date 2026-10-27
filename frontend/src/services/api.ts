@@ -5,6 +5,7 @@
  */
 import type { LifestyleIndices } from '../types/weather';
 import type { WeatherDetailApiResponse } from '../utils/weatherDetailMapper';
+import { REFRESH_HEADER, type ResponseMeta } from '../types/resilience';
 
 function normalizeApiBase(raw: string | undefined): string {
   if (raw == null || !String(raw).trim()) return '';
@@ -37,16 +38,38 @@ const JSON_HEADERS: JsonHeaders = {
   'Accept-Charset': 'utf-8',
 };
 
-async function postJson<TResponse, TBody>(url: string, body: TBody): Promise<TResponse> {
+async function postJson<TResponse, TBody>(
+  url: string,
+  body: TBody,
+  extraHeaders?: Record<string, string>
+): Promise<TResponse> {
   const response = await fetch(url, {
     method: 'POST',
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, ...extraHeaders },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
   return response.json() as Promise<TResponse>;
+}
+
+export interface DataUnavailableDetail {
+  error: 'data_unavailable';
+  retry_after_seconds?: number;
+}
+
+export async function parseDataUnavailableResponse(
+  response: Response
+): Promise<DataUnavailableDetail | null> {
+  if (response.status !== 503) return null;
+  try {
+    const body = (await response.json()) as { detail?: DataUnavailableDetail };
+    if (body.detail?.error === 'data_unavailable') return body.detail;
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export interface GeoSearchResult {
@@ -202,6 +225,7 @@ export interface BatchWeatherItem {
   condition: string | null;
   weather_code: number | null;
   error: string | null;
+  meta?: ResponseMeta | null;
 }
 
 export interface BatchWeatherResponse {
@@ -210,11 +234,14 @@ export interface BatchWeatherResponse {
 }
 
 export async function fetchPopularWeatherBatch(
-  cities: string[]
+  cities: string[],
+  options?: { forceRefresh?: boolean }
 ): Promise<BatchWeatherResponse> {
+  const extra = options?.forceRefresh ? { [REFRESH_HEADER]: '1' } : undefined;
   return postJson<BatchWeatherResponse, { cities: string[] }>(
     apiUrl('/api/weather/batch'),
-    { cities }
+    { cities },
+    extra
   );
 }
 
@@ -223,7 +250,7 @@ export async function fetchWeatherDetail(
   longitude: number,
   language: string,
   unit: 'metric' | 'imperial',
-  options?: { signal?: AbortSignal; timeoutMs?: number }
+  options?: { signal?: AbortSignal; timeoutMs?: number; forceRefresh?: boolean }
 ): Promise<WeatherDetailApiResponse> {
   const controller = new AbortController();
   const timeoutMs = options?.timeoutMs ?? 45_000;
@@ -233,13 +260,21 @@ export async function fetchWeatherDetail(
   options?.signal?.addEventListener('abort', onExternalAbort);
 
   try {
+    const headers: Record<string, string> = { ...JSON_HEADERS };
+    if (options?.forceRefresh) headers[REFRESH_HEADER] = '1';
     const response = await fetch(apiUrl('/api/weather/detail'), {
       method: 'POST',
-      headers: JSON_HEADERS,
+      headers,
       body: JSON.stringify({ latitude, longitude, language, unit }),
       signal: controller.signal,
     });
     if (!response.ok) {
+      const unavailable = await parseDataUnavailableResponse(response);
+      if (unavailable) {
+        const err = new Error('data_unavailable');
+        (err as Error & { retryAfter?: number }).retryAfter = unavailable.retry_after_seconds;
+        throw err;
+      }
       throw new Error(`Weather detail request failed: ${response.status}`);
     }
     return response.json() as Promise<WeatherDetailApiResponse>;

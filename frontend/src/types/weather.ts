@@ -1,3 +1,5 @@
+import type { ResponseMeta } from './resilience';
+
 // Weather API Response Types
 export interface HourlyData {
   time: Date[];
@@ -85,6 +87,7 @@ export interface LifestylePollenMetrics {
 export interface LifestyleIndices {
   latitude: number;
   longitude: number;
+  meta?: ResponseMeta | null;
   timezone: string | null;
   observed_at: string | null;
   european_aqi: number | null;
