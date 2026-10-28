@@ -21,7 +21,7 @@ from open_meteo_client import (
 )
 from openweathermap_client import (
     OpenWeatherRateLimitError,
-    fetch_onecall,
+    fetch_weather_forecast,
     get_api_key,
     get_current_weather_by_coords as owm_current,
 )
@@ -237,7 +237,7 @@ async def get_weather_detail(
     owm_units = "imperial" if unit_key == "imperial" else "metric"
     try:
         payload = await asyncio.to_thread(
-            fetch_onecall, latitude, longitude, units=owm_units
+            fetch_weather_forecast, latitude, longitude, units=owm_units
         )
         if isinstance(payload, dict) and payload.get("current"):
             return payload

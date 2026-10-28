@@ -120,9 +120,31 @@ def _detail_forecast_payload() -> dict:
 
 @pytest.mark.asyncio
 async def test_detail_openweather_success(monkeypatch):
-    owm_payload = _detail_forecast_payload()
+    from openweathermap_client import normalize_standard_apis_to_open_meteo
 
-    async def _fake_to_thread(_func, *_args, **_kwargs):
+    current = {
+        "coord": {"lon": 29.0, "lat": 41.0},
+        "weather": [{"id": 800}],
+        "main": {"temp": 22.5, "feels_like": 21.0, "humidity": 55},
+        "visibility": 10000,
+        "wind": {"speed": 3.2},
+    }
+    forecast = {
+        "list": [
+            {
+                "dt_txt": "2024-06-24 12:00:00",
+                "main": {"temp": 22.0, "humidity": 50},
+                "weather": [{"id": 800}],
+                "wind": {"speed": 3.0},
+            }
+        ],
+    }
+    owm_payload = normalize_standard_apis_to_open_meteo(current, forecast)
+
+    captured: dict = {}
+
+    async def _fake_to_thread(func, *_args, **_kwargs):
+        captured["func"] = func.__name__
         return owm_payload
 
     monkeypatch.setattr("weather_provider.asyncio.to_thread", _fake_to_thread)
@@ -130,8 +152,10 @@ async def test_detail_openweather_success(monkeypatch):
     async with httpx.AsyncClient() as client:
         result = await get_weather_detail(41.0, 29.0, "en", "metric", client=client)
 
-    assert result["current"]["temperature_2m"] == 20.0
-    assert result["current"]["visibility"] == 10000.0
+    assert captured.get("func") == "fetch_weather_forecast"
+    assert result["current"]["temperature_2m"] == 22.5
+    assert result["current"]["visibility"] == 10000
+    assert len(result["hourly"]["time"]) == 1
 
 
 @pytest.mark.asyncio
