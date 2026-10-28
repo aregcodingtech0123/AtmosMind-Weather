@@ -33,6 +33,7 @@
     "recharts": "^3.7.0",
     "resolve-url-loader": "^5.0.0",
     "svgo": "^4.0.0",
+    "swr": "^2.5.1",
     "tailwind-merge": "^3.4.0",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4",

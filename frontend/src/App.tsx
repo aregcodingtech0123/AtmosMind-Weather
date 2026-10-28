@@ -26,11 +26,11 @@ import { Cloud, CloudRain, Snowflake, Zap, Lightbulb, Sun, Instagram, Facebook, 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { SupportedLanguage, useSettings } from './context/SettingsContext';
+import { usePopularWeatherBatch } from './hooks/usePopularWeatherBatch';
 import {
   fetchAiWeather as fetchAiWeatherApi,
   fetchCityAdvice,
   fetchForecastSummary,
-  fetchPopularWeatherBatch,
   geocodeCity,
   reverseGeocode,
 } from './services/api';
@@ -41,27 +41,13 @@ import { sanitizeDisplayText } from './utils/sanitize';
 import { GEOCODE_TIMEOUT_MS, createRequestGuard } from './utils/requestGuard';
 import { StaleBadge } from './components/StaleBadge';
 import { UnavailableFade, WeatherValueSkeleton } from './components/WeatherValueSkeleton';
-import type { ResponseMeta } from './types/resilience';
+import type { PopularCityWeather } from './utils/popularWeatherCache';
+
+export type { PopularCityWeather };
 
 /** Dynamically resolves the image path for a given city based on its ID. */
 export function getCityImagePath(cityId: string): string {
   return `/cities/${cityId}.avif`;
-}
-
-/** Type definition for weather data specific to a popular city card. */
-export interface PopularCityWeather {
-  temperature: number | null;
-  condition: string | null;
-  weather_code: number | null;
-  meta?: ResponseMeta | null;
-}
-
-const POPULAR_WEATHER_CACHE_PREFIX = 'atmosmind_popular_weather_cache_';
-
-function popularCacheHasMeta(data: Record<string, PopularCityWeather>): boolean {
-  const values = Object.values(data);
-  if (values.length === 0) return false;
-  return values.some((entry) => entry.meta != null && typeof entry.meta.data_status === 'string');
 }
 
 function weatherCodeToIcon(code: number) {
@@ -105,9 +91,14 @@ function App() {
   const forecastSummarySectionRef = useRef<HTMLDivElement>(null);
   const adviceSectionRef = useRef<HTMLDivElement>(null);
 
-  const [popularCitiesWeather, setPopularCitiesWeather] = useState<Record<string, PopularCityWeather>>({});
-  const [popularCitiesWeatherLoading, setPopularCitiesWeatherLoading] = useState(true);
-  const [popularCitiesWeatherError, setPopularCitiesWeatherError] = useState(false);
+  const isHomeRoute = location.pathname === '/' || location.pathname === '';
+  const {
+    popularCitiesWeather,
+    popularCitiesWeatherLoading,
+    popularCitiesWeatherError,
+    refreshPopularBatch,
+  } = usePopularWeatherBatch(isHomeRoute, currentLanguage, currentUnit);
+
   const [visibleCount, setVisibleCount] = useState(() => {
     const fromEnv = process.env.REACT_APP_HOME_VISIBLE_CITIES;
     if (fromEnv != null && String(fromEnv).trim() !== '') {
@@ -253,87 +244,6 @@ function App() {
       guard.abort();
     };
   }, [location.pathname, location.state, fetchAiWeather, currentLanguage, t]);
-
-  useEffect(() => {
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith(POPULAR_WEATHER_CACHE_PREFIX))
-      .forEach((key) => localStorage.removeItem(key));
-  }, []);
-
-  // Fetch batch weather on mount when on home: city names → temperatures for top-right bubbles
-  const fetchPopularBatch = useCallback(
-    async (options?: { forceRefresh?: boolean }) => {
-      setPopularCitiesWeatherLoading(true);
-      setPopularCitiesWeatherError(false);
-
-      try {
-        const cacheKey = `${POPULAR_WEATHER_CACHE_PREFIX}${currentLanguage}_${currentUnit}`;
-        if (!options?.forceRefresh) {
-          const cached = localStorage.getItem(cacheKey);
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached) as {
-                data: Record<string, PopularCityWeather>;
-                timestamp: number;
-              };
-              if (
-                Date.now() - parsed.timestamp < 15 * 60 * 1000 &&
-                popularCacheHasMeta(parsed.data)
-              ) {
-                setPopularCitiesWeather(parsed.data);
-                setPopularCitiesWeatherLoading(false);
-                return;
-              }
-            } catch {
-              // ignore cache parse error
-            }
-          }
-        }
-
-        const cityNames = POPULAR_CITIES.map((c) => c.defaultName);
-        const batch = await fetchPopularWeatherBatch(cityNames, {
-          forceRefresh: options?.forceRefresh,
-        });
-        const map: Record<string, PopularCityWeather> = {};
-
-        POPULAR_CITIES.forEach((city) => {
-          const item =
-            batch.results.find((result) => result.city === city.defaultName) ??
-            batch.results.find((result) => result.city.startsWith(city.names.en));
-          if (!item) return;
-          map[city.id] = {
-            temperature: item.temperature,
-            condition: item.condition,
-            weather_code: item.weather_code,
-            meta: item.meta ?? null,
-          };
-        });
-
-        setPopularCitiesWeather(map);
-        if (popularCacheHasMeta(map)) {
-          localStorage.setItem(
-            cacheKey,
-            JSON.stringify({
-              data: map,
-              timestamp: Date.now(),
-            })
-          );
-        }
-      } catch (err) {
-        console.error('Batch weather fetch error:', err);
-        setPopularCitiesWeatherError(true);
-        setPopularCitiesWeather({});
-      } finally {
-        setPopularCitiesWeatherLoading(false);
-      }
-    },
-    [currentLanguage, currentUnit]
-  );
-
-  useEffect(() => {
-    if (location.pathname !== '/' && location.pathname !== '') return;
-    fetchPopularBatch();
-  }, [location.pathname, fetchPopularBatch]);
 
   // Update coordinates when geolocation changes and reverse-geocode to get actual city name.
   // Performs reverse geocoding directly here instead of via a separate hook to avoid
@@ -691,7 +601,7 @@ function App() {
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                fetchPopularBatch({ forceRefresh: true });
+                                refreshPopularBatch({ forceRefresh: true });
                               }}
                               className="flex items-center justify-center p-1 rounded-full hover:bg-white/25 hover:rotate-180 transition-all duration-300"
                               aria-label={String(t('weather.retry'))}
@@ -714,7 +624,7 @@ function App() {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      fetchPopularBatch({ forceRefresh: true });
+                                      refreshPopularBatch({ forceRefresh: true });
                                     }}
                                     className="text-[11px] leading-tight text-white/90 underline-offset-2 hover:underline"
                                   >

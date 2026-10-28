@@ -9,6 +9,7 @@ import tr from '../public/locales/tr/translation.json';
 import { SettingsProvider } from './context/SettingsContext';
 import { POPULAR_CITIES } from './data/popularCities';
 import { fetchPopularWeatherBatch } from './services/api';
+import { SWRConfig } from 'swr';
 
 // Sync i18n for tests (avoids HttpBackend network calls in Jest).
 void i18n.use(initReactI18next).init({
@@ -71,11 +72,13 @@ function renderApp(initialPath = '/') {
   localStorage.setItem('cookie-consent', 'accepted');
   return render(
     <HelmetProvider>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <SettingsProvider>
-          <App />
-        </SettingsProvider>
-      </MemoryRouter>
+      <SWRConfig value={{ dedupingInterval: 0, provider: () => new Map() }}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <SettingsProvider>
+            <App />
+          </SettingsProvider>
+        </MemoryRouter>
+      </SWRConfig>
     </HelmetProvider>
   );
 }
