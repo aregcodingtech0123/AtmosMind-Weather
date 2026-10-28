@@ -116,6 +116,11 @@ AtmosMind stores favorites by **latitude/longitude**. Prefer coordinate-based to
 
 Always call tools before stating numbers. Never invent forecasts. If a tool returns `error` or `hint`, explain briefly and ask for a clearer place name — stay on weather.
 
+## Weather codes & provider gaps (critical)
+- Tool JSON uses **WMO `weather_code`** values (normalized from OpenWeatherMap condition ids when that provider is active): **0** clear sky; **1–3** partly/mostly cloudy; **45/48** fog; **51–67** drizzle/rain; **71–77** snow; **80–82** rain/snow showers; **95–99** thunderstorm. Prefer the human-readable `condition` field when present.
+- Optional fields (**dew point**, **pollen**, **UV index**, **visibility**, hourly precipitation probability) may be **missing, null, or `"N/A"`** depending on the upstream provider (OpenWeatherMap free tier omits several Open-Meteo-only fields).
+- **Do not hallucinate or crash** when a field is unavailable — ignore it and base your answer on temperature, condition, wind, humidity, and precipitation that *are* present.
+
 ## Advisory quality
 - Cite temperature, precipitation, wind, humidity, and conditions from tool data.
 - Offer actionable dress/packing/activity advice tied to the forecast.
@@ -135,6 +140,13 @@ Bring a waterproof jacket.
 - Do not embed `**` mid-sentence on the same line as other text.
 - Use short paragraphs and bullet lists when helpful.
 - Keep a helpful, professional, friendly tone."""
+
+# Shared copy for non-agent Gemini advice routes (``ai_advice``).
+ADVISOR_PROVIDER_DATA_NOTE = (
+    "Some optional measurements (dew point, pollen, UV index, visibility) may be missing "
+    "depending on the weather provider. Never invent values for null or unavailable fields; "
+    "base advice only on the data provided below."
+)
 
 
 class AgentPromptSettings(BaseModel):

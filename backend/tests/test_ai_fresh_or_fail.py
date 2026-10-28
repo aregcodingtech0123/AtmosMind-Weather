@@ -188,3 +188,86 @@ def test_stale_cache_cb_open_returns_503_not_stale_numbers(client_with_redis, mo
     assert "temperature" not in detail
     assert "88" not in json.dumps(resp.json())
     reset_breakers_for_tests()
+
+
+@pytest.fixture
+def advice_client_no_swr(monkeypatch):
+    monkeypatch.setenv("ENABLE_STALE_WHILE_REVALIDATE", "false")
+    redis = MagicMock()
+    monkeypatch.setattr(api, "_get_redis", lambda: redis)
+    monkeypatch.setattr(api, "fetch_popular_for_redis", lambda conn, limit=1000: [])
+    monkeypatch.setattr(api, "init_schema", lambda conn: None)
+    monkeypatch.setattr(api, "get_connection", lambda: MagicMock())
+    with TestClient(api.app) as c:
+        yield c
+
+
+def test_malformed_owm_normalize_and_ai_advice_returns_graceful_fallback(
+    advice_client_no_swr, monkeypatch
+):
+    """Malformed OWM JSON must not crash normalization; AI failures return 200 fallback copy."""
+    from open_meteo_client import _parse_forecast_current
+    from openweathermap_client import normalize_current_weather_api, normalize_standard_apis_to_open_meteo
+    from ai_fresh_context import weather_context_to_summary
+
+    shell = normalize_current_weather_api({"coord": {"lat": 41.0, "lon": 29.0}, "main": {"temp": 18.0}})
+    normalize_standard_apis_to_open_meteo(
+        {"coord": {"lat": 41.0, "lon": 29.0}},
+        {"list": []},
+    )
+    parsed = _parse_forecast_current(shell)
+    assert "error" not in parsed
+    assert parsed.get("dew_point_celsius") is None
+    summary = weather_context_to_summary(parsed)
+    assert "18" in summary
+    assert "None" not in summary
+
+    def _fail_gemini(*_a, **_k):
+        raise RuntimeError("gemini unavailable")
+
+    monkeypatch.setattr("ai_advice.generate_text", _fail_gemini)
+
+    resp = advice_client_no_swr.post(
+        "/api/get-city-advice",
+        json={
+            "city": "Istanbul",
+            "weather_summary": summary,
+            "language": "en",
+            "unit": "metric",
+        },
+    )
+    assert resp.status_code == 200
+    assert "unable to generate personalized advice" in resp.json()["advice"].casefold()
+
+
+def test_get_city_advice_succeeds_with_owm_missing_dew_point(advice_client_no_swr, monkeypatch):
+    from open_meteo_client import _parse_forecast_current
+    from openweathermap_client import normalize_current_weather_api
+    from ai_fresh_context import weather_context_to_summary
+
+    shell = normalize_current_weather_api(
+        {
+            "coord": {"lat": 41.0, "lon": 29.0},
+            "main": {"temp": 20.0, "humidity": 40},
+            "wind": {"speed": 2.0},
+        }
+    )
+    parsed = _parse_forecast_current(shell)
+    summary = weather_context_to_summary(parsed)
+
+    monkeypatch.setattr(
+        "ai_advice.generate_text",
+        lambda *_a, **_k: "**What to Wear**\n\nLight layers are fine today.",
+    )
+
+    resp = advice_client_no_swr.post(
+        "/api/get-city-advice",
+        json={
+            "city": "Istanbul",
+            "weather_summary": summary,
+            "language": "en",
+            "unit": "metric",
+        },
+    )
+    assert resp.status_code == 200
+    assert "What to Wear" in resp.json()["advice"]

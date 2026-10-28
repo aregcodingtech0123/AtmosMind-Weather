@@ -26,7 +26,8 @@ from datetime import datetime
 from typing import Literal
 
 import httpx
-from langchain_core.tools import tool
+import requests
+from langchain_core.tools import ToolException, tool
 from pydantic import BaseModel, Field, field_validator
 
 from weather_assistant import _weather_code_to_condition, geocode_city
@@ -35,6 +36,39 @@ logger = logging.getLogger(__name__)
 
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=25.0)
+
+NA = "N/A"
+
+
+def _safe_round(value: object | None, places: int = 1) -> float | None:
+    if value is None:
+        return None
+    try:
+        return round(float(value), places)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: object | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _present_for_llm(value: object | None) -> object:
+    """Use N/A in tool payloads when upstream omitted a field (OWM vs Open-Meteo)."""
+    return NA if value is None else value
+
+
+def _present_tool_mapping(data: dict) -> dict:
+    return {key: _present_for_llm(val) for key, val in data.items()}
+
+
+def _present_tool_rows(rows: list[dict]) -> list[dict]:
+    return [_present_tool_mapping(row) for row in rows]
 
 
 # ─── Pydantic input schemas (shared with tool args_schema) ───────────────────
@@ -129,29 +163,31 @@ def _format_local_time(iso_time: str | None) -> str | None:
 
 def _parse_current_block(fc_data: dict, temperature_unit: str) -> dict | None:
     current_weather = fc_data.get("current_weather") or {}
-    current = fc_data.get("current") or {}
+    current = fc_data.get("current") if isinstance(fc_data.get("current"), dict) else {}
     if not current_weather:
         return None
 
-    temperature = current_weather.get("temperature")
-    if temperature is not None:
-        temperature = round(float(temperature), 1)
-    wind_speed = current_weather.get("windspeed")
-    if wind_speed is not None:
-        wind_speed = round(float(wind_speed), 1)
+    temperature = _safe_round(current_weather.get("temperature"))
+    wind_speed = _safe_round(current_weather.get("windspeed"))
     weather_code = current_weather.get("weathercode")
-
-    humidity = current.get("relative_humidity_2m")
-    if humidity is not None:
-        humidity = int(float(humidity))
+    humidity = _safe_int(current.get("relative_humidity_2m"))
+    apparent = _safe_round(current.get("apparent_temperature"))
+    visibility = _safe_round(current.get("visibility"), 0)
+    dew_point = _safe_round(current.get("dew_point_2m"))
 
     return {
         "temperature": temperature,
         "temperature_unit": temperature_unit,
         "condition": _weather_code_to_condition(weather_code),
         "weather_code": weather_code,
+        "weather_code_standard": "WMO",
         "humidity_percent": humidity,
         "wind_kmh": wind_speed,
+        "apparent_temperature": apparent,
+        "visibility_meters": visibility,
+        "dew_point": dew_point,
+        "uv_index": NA,
+        "pollen": NA,
         "observed_at": current_weather.get("time"),
         "local_time": _format_local_time(current_weather.get("time")),
     }
@@ -169,11 +205,11 @@ def _parse_daily_block(daily: dict) -> list[dict]:
         rows.append(
             {
                 "date": date_str,
-                "temp_max": round(float(t_max), 1) if t_max is not None else None,
-                "temp_min": round(float(t_min), 1) if t_min is not None else None,
+                "temp_max": _safe_round(t_max),
+                "temp_min": _safe_round(t_min),
                 "condition": _weather_code_to_condition(code),
-                "precipitation_mm": round(float(precip), 1) if precip is not None else None,
-                "wind_max_kmh": round(float(wind_max), 1) if wind_max is not None else None,
+                "precipitation_mm": _safe_round(precip),
+                "wind_max_kmh": _safe_round(wind_max),
             }
         )
     return rows
@@ -190,15 +226,19 @@ def _parse_hourly_block(hourly: dict, limit: int = 48) -> list[dict]:
         rows.append(
             {
                 "time": time_str,
-                "temperature": round(float(temp), 1) if temp is not None else None,
+                "temperature": _safe_round(temp),
                 "condition": _weather_code_to_condition(code),
-                "precipitation_probability_percent": (
-                    int(precip_prob) if precip_prob is not None else None
-                ),
-                "wind_kmh": round(float(wind), 1) if wind is not None else None,
+                "precipitation_probability_percent": _safe_int(precip_prob),
+                "wind_kmh": _safe_round(wind),
             }
         )
     return rows
+
+
+def _raise_weather_tool_error(message: str, exc: Exception | None = None) -> None:
+    if exc is not None:
+        logger.warning("%s: %s", message, exc)
+    raise ToolException(message)
 
 
 # ─── LangChain tools (async, Pydantic-validated) ─────────────────────────────
@@ -229,17 +269,17 @@ async def get_current_weather_by_coordinates(
             }
         )
     except httpx.HTTPError as exc:
-        logger.warning(
-            "Open-Meteo current weather failed for (%s, %s): %s",
-            latitude,
-            longitude,
+        _raise_weather_tool_error(
+            "Unable to fetch weather data at the moment. Please try again later.",
             exc,
         )
-        return {
-            "error": "Unable to fetch weather data at the moment. Please try again later.",
-            "latitude": latitude,
-            "longitude": longitude,
-        }
+    except requests.exceptions.HTTPError as exc:
+        _raise_weather_tool_error(
+            "Unable to fetch weather data at the moment. Please try again later.",
+            exc,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        _raise_weather_tool_error(f"Weather data could not be parsed: {exc}", exc)
     except Exception as exc:
         logger.exception(
             "Unexpected error fetching current weather for (%s, %s): %s",
@@ -247,21 +287,24 @@ async def get_current_weather_by_coordinates(
             longitude,
             exc,
         )
-        return {"error": "An unexpected error occurred.", "latitude": latitude, "longitude": longitude}
+        _raise_weather_tool_error(
+            "An unexpected error occurred while fetching weather.",
+            exc,
+        )
 
-    current = _parse_current_block(fc_data, temperature_unit)
+    try:
+        current = _parse_current_block(fc_data, temperature_unit)
+    except (ValueError, KeyError, TypeError) as exc:
+        _raise_weather_tool_error(f"Weather data could not be parsed: {exc}", exc)
+
     if current is None:
-        return {
-            "error": "Forecast API did not return current weather.",
-            "latitude": latitude,
-            "longitude": longitude,
-        }
+        _raise_weather_tool_error("Forecast API did not return current weather.")
 
     return {
         "latitude": latitude,
         "longitude": longitude,
         "timezone": fc_data.get("timezone"),
-        **current,
+        **_present_tool_mapping(current),
     }
 
 
@@ -299,17 +342,17 @@ async def get_weather_forecast_by_coordinates(
             }
         )
     except httpx.HTTPError as exc:
-        logger.warning(
-            "Open-Meteo forecast failed for (%s, %s): %s",
-            latitude,
-            longitude,
+        _raise_weather_tool_error(
+            "Unable to fetch forecast data at the moment. Please try again later.",
             exc,
         )
-        return {
-            "error": "Unable to fetch forecast data at the moment. Please try again later.",
-            "latitude": latitude,
-            "longitude": longitude,
-        }
+    except requests.exceptions.HTTPError as exc:
+        _raise_weather_tool_error(
+            "Unable to fetch forecast data at the moment. Please try again later.",
+            exc,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        _raise_weather_tool_error(f"Forecast data could not be parsed: {exc}", exc)
     except Exception as exc:
         logger.exception(
             "Unexpected forecast error for (%s, %s): %s",
@@ -317,16 +360,26 @@ async def get_weather_forecast_by_coordinates(
             longitude,
             exc,
         )
-        return {"error": "An unexpected error occurred.", "latitude": latitude, "longitude": longitude}
+        _raise_weather_tool_error(
+            "An unexpected error occurred while fetching forecast data.",
+            exc,
+        )
+
+    try:
+        daily = _parse_daily_block(fc_data.get("daily") or {})
+        hourly = _parse_hourly_block(fc_data.get("hourly") or {})
+        current = _parse_current_block(fc_data, temperature_unit)
+    except (ValueError, KeyError, TypeError) as exc:
+        _raise_weather_tool_error(f"Forecast data could not be parsed: {exc}", exc)
 
     return {
         "latitude": latitude,
         "longitude": longitude,
         "timezone": fc_data.get("timezone"),
         "temperature_unit": temperature_unit,
-        "current": _parse_current_block(fc_data, temperature_unit),
-        "daily": _parse_daily_block(fc_data.get("daily") or {}),
-        "hourly": _parse_hourly_block(fc_data.get("hourly") or {}),
+        "current": _present_tool_mapping(current) if current else None,
+        "daily": _present_tool_rows(daily),
+        "hourly": _present_tool_rows(hourly),
     }
 
 
@@ -339,9 +392,15 @@ async def resolve_city_coordinates(city_name: str, language: str = "en") -> dict
     not yet known. Then pass the returned coordinates to the coordinate-based
     weather tools.
     """
-    # Existing geocode logic is synchronous (requests); offload to a thread pool
-    # so the FastAPI event loop stays responsive under Uvicorn.
-    coords = await asyncio.to_thread(geocode_city, city_name)
+    try:
+        coords = await asyncio.to_thread(geocode_city, city_name)
+    except Exception as exc:
+        logger.exception("Geocoding failed for %r: %s", city_name, exc)
+        _raise_weather_tool_error(
+            "Unable to resolve the city name at the moment. Please try again later.",
+            exc,
+        )
+
     if coords is None:
         return {
             "error": (
@@ -358,6 +417,11 @@ async def resolve_city_coordinates(city_name: str, language: str = "en") -> dict
         "longitude": coords["longitude"],
         "language": language.strip().casefold().split("-")[0] if language else "en",
     }
+
+
+get_current_weather_by_coordinates.handle_tool_error = True
+get_weather_forecast_by_coordinates.handle_tool_error = True
+resolve_city_coordinates.handle_tool_error = True
 
 
 def get_atmosmind_tools() -> list:

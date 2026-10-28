@@ -50,6 +50,35 @@ async def test_get_current_weather_by_coordinates_success(mock_fetch, open_meteo
 
 @pytest.mark.asyncio
 @patch("langchain_tools._open_meteo_get", new_callable=AsyncMock)
+async def test_get_current_weather_owm_shaped_missing_optional_fields(mock_fetch):
+    """Open-Meteo shell without dew point / pollen must not crash the tool."""
+    mock_fetch.return_value = {
+        "timezone": "Europe/Istanbul",
+        "current_weather": {
+            "temperature": 20.0,
+            "windspeed": 3.0,
+            "weathercode": 3,
+            "time": "2026-06-24T14:00",
+        },
+        "current": {
+            "relative_humidity_2m": 55,
+            "dew_point_2m": None,
+        },
+    }
+
+    result = await get_current_weather_by_coordinates.ainvoke(
+        {"latitude": 41.0, "longitude": 29.0, "temperature_unit": "celsius"}
+    )
+
+    assert result["temperature"] == 20.0
+    assert result["dew_point"] == "N/A"
+    assert result["pollen"] == "N/A"
+    assert result["weather_code"] == 3
+    assert "condition" in result
+
+
+@pytest.mark.asyncio
+@patch("langchain_tools._open_meteo_get", new_callable=AsyncMock)
 async def test_get_current_weather_by_coordinates_http_error(mock_fetch):
     import httpx
 
@@ -59,8 +88,8 @@ async def test_get_current_weather_by_coordinates_http_error(mock_fetch):
         {"latitude": 52.52, "longitude": 13.41, "temperature_unit": "celsius"}
     )
 
-    assert "error" in result
-    assert result["latitude"] == 52.52
+    assert isinstance(result, str)
+    assert "Unable to fetch weather" in result or "error" in result.lower()
 
 
 def test_coordinates_input_rejects_invalid_latitude():

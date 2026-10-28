@@ -69,8 +69,16 @@ from observability import configure_langsmith_tracing, langsmith_tracing_active
 from logging_config import log_redis_event
 from metrics import is_resilience_endpoint_enabled, snapshot as resilience_snapshot
 
+from loguru import logger as loguru_logger
+
 logger = logging.getLogger(__name__)
 GENERIC_ERROR_MESSAGE = "An unexpected error occurred while processing your request. Please try again later."
+PERSONALIZED_ADVICE_FALLBACK = (
+    "We are currently unable to generate personalized advice. Please try again later."
+)
+FORECAST_SUMMARY_FALLBACK = (
+    "We are currently unable to generate a forecast summary. Please try again later."
+)
 
 EXTERNAL_API_HOSTS = (
     "generativelanguage.googleapis.com",
@@ -687,7 +695,21 @@ async def get_city_advice_endpoint(req: GetCityAdviceRequest, request: Request):
             summary = weather_context_to_summary(fresh, req.unit)
     except DataUnavailableForAI as exc:
         raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
-    advice = get_city_advice(req.city, summary, req.language, req.unit)
+    except Exception as exc:
+        loguru_logger.exception(
+            "Fresh weather context for get-city-advice failed for city={!r}: {}",
+            req.city,
+            exc,
+        )
+    try:
+        advice = get_city_advice(req.city, summary, req.language, req.unit)
+    except Exception as exc:
+        loguru_logger.exception(
+            "get-city-advice generation failed for city={!r}: {}",
+            req.city,
+            exc,
+        )
+        return GetCityAdviceResponse(advice=PERSONALIZED_ADVICE_FALLBACK)
     return GetCityAdviceResponse(advice=advice)
 
 
@@ -712,7 +734,21 @@ async def get_forecast_summary_endpoint(req: GetForecastSummaryRequest, request:
             weather_summary = weather_context_to_summary(fresh, req.unit)
     except DataUnavailableForAI as exc:
         raise HTTPException(status_code=503, detail=data_unavailable_detail(exc)) from exc
-    summary = get_forecast_summary(req.city, weather_summary, req.language, req.unit)
+    except Exception as exc:
+        loguru_logger.exception(
+            "Fresh weather context for get-forecast-summary failed for city={!r}: {}",
+            req.city,
+            exc,
+        )
+    try:
+        summary = get_forecast_summary(req.city, weather_summary, req.language, req.unit)
+    except Exception as exc:
+        loguru_logger.exception(
+            "get-forecast-summary generation failed for city={!r}: {}",
+            req.city,
+            exc,
+        )
+        return GetForecastSummaryResponse(summary=FORECAST_SUMMARY_FALLBACK)
     return GetForecastSummaryResponse(summary=summary)
 
 

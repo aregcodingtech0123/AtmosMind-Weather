@@ -81,6 +81,22 @@ def _iso_date_from_unix(ts: Any) -> str | None:
         return None
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_round(value: Any, places: int = 1) -> float | None:
+    parsed = _optional_float(value)
+    if parsed is None:
+        return None
+    return round(parsed, places)
+
+
 def _weather_id_from_entry(entry: dict[str, Any]) -> int | None:
     weather = entry.get("weather")
     if not isinstance(weather, list) or not weather:
@@ -120,6 +136,9 @@ def _empty_open_meteo_shell(lat: float | None = None, lon: float | None = None) 
 
 def normalize_current_weather_api(weather: dict[str, Any]) -> dict[str, Any]:
     """Map ``/data/2.5/weather`` JSON into Open-Meteo current blocks."""
+    if not isinstance(weather, dict):
+        return _empty_open_meteo_shell()
+
     coord = weather.get("coord") if isinstance(weather.get("coord"), dict) else {}
     lat = coord.get("lat")
     lon = coord.get("lon")
@@ -137,7 +156,7 @@ def normalize_current_weather_api(weather: dict[str, Any]) -> dict[str, Any]:
     feels_like = main.get("feels_like")
 
     shell["current_weather"] = {
-        "temperature": round(float(temp), 1) if temp is not None else None,
+        "temperature": _optional_round(temp),
         "weathercode": wmo,
         "windspeed": wind_speed,
         "is_day": 1,
@@ -170,8 +189,11 @@ def _precip_mm_from_forecast_item(item: dict[str, Any]) -> float:
 
 def normalize_forecast_api(forecast: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
     """Merge ``/data/2.5/forecast`` list into hourly + daily on an Open-Meteo shell."""
+    if not isinstance(forecast, dict):
+        return base
+
     items = forecast.get("list")
-    if not isinstance(items, list):
+    if not isinstance(items, list) or len(items) == 0:
         return base
 
     city = forecast.get("city") if isinstance(forecast.get("city"), dict) else {}

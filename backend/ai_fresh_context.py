@@ -118,7 +118,18 @@ def weather_context_to_summary(payload: dict[str, Any], unit: str = "metric") ->
     temp = payload.get("temperature")
     condition = payload.get("condition") or "Unknown"
     unit_label = "°F" if unit == "imperial" else "°C"
-    return f"Current temperature: {temp}{unit_label}, conditions: {condition}."
+    temp_text = f"{temp}{unit_label}" if temp is not None else "N/A"
+    parts = [f"Current temperature: {temp_text}, conditions: {condition}."]
+    code = payload.get("weather_code")
+    if code is not None:
+        parts.append(f"WMO weather code: {code}.")
+    dew = payload.get("dew_point_celsius")
+    if dew is not None:
+        parts.append(f"Dew point: {dew}{unit_label}.")
+    visibility = payload.get("visibility_meters")
+    if visibility is not None:
+        parts.append(f"Visibility: {visibility} m.")
+    return " ".join(parts)
 
 
 def data_unavailable_detail(exc: DataUnavailableForAI) -> dict[str, Any]:

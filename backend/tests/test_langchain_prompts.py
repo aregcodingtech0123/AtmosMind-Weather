@@ -36,6 +36,14 @@ def test_preview_system_message_metric_celsius():
     assert "weather" in text.casefold()
 
 
+def test_system_prompt_mentions_wmo_codes_and_provider_gaps():
+    text = preview_system_message(language="en", unit="metric")
+    assert "WMO" in text
+    assert "weather_code" in text
+    assert "null" in text.casefold() or "missing" in text.casefold()
+    assert "OpenWeatherMap" in text or "provider" in text.casefold()
+
+
 def test_decline_template_localized_for_turkish():
     """PR-04: Turkish UI locale embeds a Turkish off-topic decline template."""
     from langchain_prompts import decline_template_for_language

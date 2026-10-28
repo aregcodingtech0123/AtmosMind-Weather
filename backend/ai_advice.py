@@ -5,8 +5,13 @@ Input: city name + current/forecast weather summary → personalized advice.
 import logging
 
 from gemini_client import generate_text
+from langchain_prompts import ADVISOR_PROVIDER_DATA_NOTE
 
 logger = logging.getLogger(__name__)
+
+
+class AiServiceUnavailable(Exception):
+    """Gemini (or downstream) failed after retries — return structured API error, not generic copy in body."""
 
 
 def get_city_advice(city_name: str, weather_summary: str, language: str = "en", unit: str = "metric") -> str:
@@ -20,6 +25,8 @@ City: {city_name}
 
 Weather summary:
 {weather_summary}
+
+Provider note: {ADVISOR_PROVIDER_DATA_NOTE}
 
 Provide concise, practical, personalized advice. Use Markdown:
 - Put each section title on its own line in bold (e.g. **What to Wear**), then a blank line, then the paragraph.
@@ -35,7 +42,9 @@ You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if un
         return generate_text(prompt)
     except Exception as e:
         logger.exception("City advice generation failed: %s", e)
-        return "An unexpected error occurred while processing your request. Please try again later."
+        raise AiServiceUnavailable(
+            "Unable to generate advice at this time. Please try again later."
+        ) from e
 
 
 def get_forecast_summary(city_name: str, weather_summary: str, language: str = "en", unit: str = "metric") -> str:
@@ -50,6 +59,8 @@ City: {city_name}
 Weather data/context:
 {weather_summary}
 
+Provider note: {ADVISOR_PROVIDER_DATA_NOTE}
+
 Produce a detailed, readable forecast summary for current and upcoming conditions.
 
 Use Markdown with bold section headings on their own line, each followed by a blank line (e.g. **Overview**, **What to Expect**, **Planning Tips**). Do not use raw ** inline within a single continuous line.
@@ -63,4 +74,6 @@ You MUST respond in language code '{language}' and use {'Fahrenheit (°F)' if un
         return generate_text(prompt)
     except Exception as e:
         logger.exception("Forecast summary generation failed: %s", e)
-        return "An unexpected error occurred while processing your request. Please try again later."
+        raise AiServiceUnavailable(
+            "Unable to generate forecast summary at this time. Please try again later."
+        ) from e

@@ -74,6 +74,21 @@ def test_normalize_standard_apis_builds_hourly_and_daily():
     assert out["daily"]["precipitation_sum"][0] == 0.5
 
 
+def test_normalize_current_weather_api_missing_weather_and_main():
+    out = normalize_current_weather_api({"coord": {"lat": 41.0, "lon": 29.0}})
+    assert out["latitude"] == 41.0
+    assert out["current_weather"]["temperature"] is None
+    assert out["current_weather"]["weathercode"] == 3
+
+
+def test_normalize_forecast_api_empty_list():
+    base = normalize_current_weather_api(_sample_current_weather())
+    out = normalize_standard_apis_to_open_meteo(_sample_current_weather(), {"list": []})
+    assert out["hourly"]["time"] == []
+    assert out["daily"]["time"] == []
+    assert out["current"]["temperature_2m"] == base["current"]["temperature_2m"]
+
+
 @patch("openweathermap_client.get_api_key", return_value="test-key")
 @patch("openweathermap_client._get_json_with_retry")
 def test_fetch_weather_forecast_calls_both_endpoints(mock_get, _mock_key):
