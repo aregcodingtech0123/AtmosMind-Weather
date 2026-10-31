@@ -11,7 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code
 COPY . .
-RUN chmod +x /app/entrypoint.sh
+# Strip any CRLF/BOM from the entrypoint (Windows checkouts) before making it executable
+RUN sed -i -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh
 
 # Non-root runtime user — /app/data must be writable (volume mount or image layer).
 RUN adduser --disabled-password --gecos "" appuser \

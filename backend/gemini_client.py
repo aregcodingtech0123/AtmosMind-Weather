@@ -24,7 +24,7 @@ def require_google_api_key() -> str:
     api_key = os.getenv("GOOGLE_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError(
-            "GOOGLE_API_KEY is not set. Add it to your environment or backend/.env file."
+            "GOOGLE_API_KEY is not set. Add it to your environment or the root .env file."
         )
     return api_key
 

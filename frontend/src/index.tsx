@@ -1,3 +1,5 @@
+// Must stay first: starts the homepage weather request before the rest of the app boots.
+import './utils/startPopularWeatherBoot';
 import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';

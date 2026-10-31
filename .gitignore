@@ -2,7 +2,6 @@
 .env
 .env.*
 !.env.example
-!frontend/.env.example
 
 # ─── Python / Backend ──────────────────────────────────────────────────────
 __pycache__/

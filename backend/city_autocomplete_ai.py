@@ -3,7 +3,9 @@ import json
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv()  # fallback: .env in cwd / backend/
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 

@@ -80,7 +80,8 @@ AtmosMind-Weather-main/
 │   ├── database.py              # SQLite search + schema
 │   ├── tests/                   # Pytest suite
 │   ├── Dockerfile
-│   └── .env.example
+│   └── ...
+├── .env.example             # Single env template for backend + frontend
 └── frontend/
     ├── src/
     │   ├── App.tsx
@@ -106,10 +107,10 @@ AtmosMind-Weather-main/
 
 ### Option A — Docker Compose (recommended)
 
-1. Copy and edit backend environment:
+1. Copy and edit the single root environment file (shared by backend and frontend):
 
    ```bash
-   cp backend/.env.example backend/.env
+   cp .env.example .env
    ```
 
    Set at minimum:
@@ -147,7 +148,7 @@ python seed_cities.py   # if cities.db is missing
 uvicorn api:app --reload --port 8000
 ```
 
-Ensure Redis is running and `REDIS_URL` in `backend/.env` is correct.
+Ensure Redis is running and `REDIS_URL` in the root `.env` is correct.
 
 **Frontend**
 
@@ -178,7 +179,7 @@ Runs at http://localhost:3000 with API calls proxied to http://localhost:8000.
 
 ## Environment variables
 
-### Backend (`backend/.env`)
+### Backend (root `.env`)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -195,9 +196,9 @@ Runs at http://localhost:3000 with API calls proxied to http://localhost:8000.
 | `LANGCHAIN_PROJECT` | No | LangSmith project (default `atmosmind-agent`) |
 | `CHAT_MEMORY_WINDOW_K` | No | Chat memory window (5–10, default `10`) |
 
-See [backend/.env.example](backend/.env.example) for the full list.
+See [.env.example](.env.example) for the full list.
 
-### Frontend
+### Frontend (same root `.env`)
 
 | Variable | Required | Description |
 |----------|----------|-------------|

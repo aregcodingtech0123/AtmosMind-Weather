@@ -2,7 +2,7 @@ services:
   app:
     build: .
     env_file:
-      - .env
+      - ../.env
     ports:
       - "8000:8000"
     environment:
@@ -25,7 +25,7 @@ services:
   redis:
     image: redis:alpine
     env_file:
-      - .env
+      - ../.env
     command: sh -c 'redis-server --save 60 1 --loglevel warning --requirepass "$$REDIS_PASSWORD"'
     volumes:
       - redis_data:/data
